@@ -34,26 +34,71 @@ static class Program
 
 			for (int i = 0; i < xnode.Get("screenshots", 2); i++)
 			{
-				for (int k = 0; k < 10; k++)
-				{
-					Console.Write("> ");
-					int seed = random.Next();
-					bool finished = model.Run(seed, xnode.Get("limit", 0));
-					if (finished)
-					{
-						Console.WriteLine("DONE");
-                        /*
-						model.Graphics().Save($"{counter} {name} {i}.png");
-						if (model is SimpleTiledModel && xnode.Get("textOutput", false))
-							System.IO.File.WriteAllText($"{counter} {name} {i}.txt", (model as SimpleTiledModel).TextOutput());
-                            */
-						break;
-					}
-					else Console.WriteLine("CONTRADICTION");
-				}
-			}
+			    switch (mode)
+			    {
+			        case "sequential-main":
+			            SequentialMain(random, model, xnode);
+			            break;
+			        case "parallel-main":
+			            ParallelMain();
+			            break;
+			        case "parallel-propagate":
+			            ParallelPropagate();
+			            break;
+			        case "parallel-observe":
+			            ParallelObserve();
+			            break;
+			        default:
+			            DefaultExecution(random, model, xnode);
+                        break;
+                }
+			}     
 
 			counter++;
 		}
 	}
+
+    private static void DefaultExecution(Random random, Model model, XmlNode xnode)
+    {
+        for (int k = 0; k < 10; k++)
+        {
+            Console.Write("> ");
+            int seed = random.Next();
+            bool finished = model.Run(seed, xnode.Get("limit", 0));
+            if (finished)
+            {
+                Console.WriteLine("DONE");
+                /*
+                model.Graphics().Save($"{counter} {name} {i}.png");
+                if (model is SimpleTiledModel && xnode.Get("textOutput", false))
+                    System.IO.File.WriteAllText($"{counter} {name} {i}.txt", (model as SimpleTiledModel).TextOutput());
+                    */
+                break;
+            }
+            else Console.WriteLine("CONTRADICTION");
+        }
+    }
+
+    private static void ParallelObserve()
+    {
+        throw new NotImplementedException();
+    }
+
+    private static void ParallelPropagate()
+    {
+        throw new NotImplementedException();
+    }
+
+    private static void ParallelMain()
+    {
+        throw new NotImplementedException();
+    }
+
+    private static void SequentialMain(Random random, Model model, XmlNode xnode)
+    {
+        //throw new NotImplementedException();
+        DefaultExecution(random, model, xnode);
+    }
+
+    public static string mode { get; private set; }
 }
