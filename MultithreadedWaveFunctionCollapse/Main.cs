@@ -7,76 +7,102 @@ The software is provided "as is", without warranty of any kind, express or impli
 */
 
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Xml;
 
 static class Program
 {
-	static void Main()
-	{
-		Random random = new Random();
-		var xdoc = new XmlDocument();
-		xdoc.Load("samples.xml");
+    private const int ERROR_BAD_LENGTH = 24, seed = 1000;
+    private static bool isDefault;      
+    private static string MODE, FILE_NAME, newLine;
+    private static List<string> _lines;
 
-		int counter = 1;
-		foreach (XmlNode xnode in xdoc.FirstChild.ChildNodes)
-		{
-			if (xnode.Name == "#comment") continue;
+    static void Main(string[] args)
+    {
+        if (args.Length > 2 || (args.Length == 1 && args[0] != "default"))
+        {
+            Console.WriteLine("Usage: \n\nMultithreadedWaveFunctionCollapse\n\nOR\n\nMultithreadedWaveFunctionCollapse mode filename");
+            Environment.Exit(exitCode: ERROR_BAD_LENGTH);
+        }
+        else if (args.Length < 1 || (args.Length == 1 && args[0] == "default"))
+        {
+            isDefault = true;
+        }
+        else if (args.Length == 2)
+        {
+            MODE = args[0];
+            FILE_NAME = args[1];
+            _lines = new List<string>();
+            isDefault = false;
+        }
+        //newLine = isDefault ? Environment.NewLine : "\n";
+        newLine = Environment.NewLine;
+        //newLine = "\n";
 
-			Model model;
-			string name = xnode.Get<string>("name");
-			Console.WriteLine($"< {name}");
+        Random random = new Random(seed);
+        var xdoc = new XmlDocument();
+        xdoc.Load("samples.xml");
 
-			if (xnode.Name == "overlapping") model = new OverlappingModel(name, xnode.Get("N", 2), xnode.Get("width", 48), xnode.Get("height", 48), 
-				xnode.Get("periodicInput", true), xnode.Get("periodic", false), xnode.Get("symmetry", 8), xnode.Get("ground", 0));
-			else if (xnode.Name == "simpletiled") model = new SimpleTiledModel(name, xnode.Get<string>("subset"), 
-				xnode.Get("width", 10), xnode.Get("height", 10), xnode.Get("periodic", false), xnode.Get("black", false));
-			else continue;
+        int counter = 1;
+        foreach (XmlNode xnode in xdoc.FirstChild.ChildNodes)
+        {
+            if (xnode.Name == "#comment") continue;
 
-			for (int i = 0; i < xnode.Get("screenshots", 2); i++)
-			{
-			    switch (mode)
-			    {
-			        case "sequential-main":
-			            SequentialMain(random, model, xnode);
-			            break;
-			        case "parallel-main":
-			            ParallelMain();
-			            break;
-			        case "parallel-propagate":
-			            ParallelPropagate();
-			            break;
-			        case "parallel-observe":
-			            ParallelObserve();
-			            break;
-			        default:
-			            DefaultExecution(random, model, xnode);
+            Model model;
+            string name = xnode.Get<string>("name");            
+            Output($"< {name}" + newLine);
+
+            if (xnode.Name == "overlapping") model = new OverlappingModel(name, xnode.Get("N", 2), xnode.Get("width", 48), xnode.Get("height", 48),
+                xnode.Get("periodicInput", true), xnode.Get("periodic", false), xnode.Get("symmetry", 8), xnode.Get("ground", 0));
+            else if (xnode.Name == "simpletiled") model = new SimpleTiledModel(name, xnode.Get<string>("subset"),
+                xnode.Get("width", 10), xnode.Get("height", 10), xnode.Get("periodic", false), xnode.Get("black", false));
+            else continue;
+
+            for (int i = 0; i < xnode.Get("screenshots", 2); i++)
+            {
+                switch (MODE)
+                {
+                    case "sequential-main":
+                        SequentialMain(random, model, xnode);
+                        break;
+                    case "parallel-main":
+                        ParallelMain();
+                        break;
+                    case "parallel-propagate":
+                        ParallelPropagate();
+                        break;
+                    case "parallel-observe":
+                        ParallelObserve();
+                        break;
+                    default:
+                        SequentialMain(random, model, xnode);
                         break;
                 }
-			}     
-
-			counter++;
-		}
-	}
-
-    private static void DefaultExecution(Random random, Model model, XmlNode xnode)
-    {
-        for (int k = 0; k < 10; k++)
-        {
-            Console.Write("> ");
-            int seed = random.Next();
-            bool finished = model.Run(seed, xnode.Get("limit", 0));
-            if (finished)
-            {
-                Console.WriteLine("DONE");
-                /*
-                model.Graphics().Save($"{counter} {name} {i}.png");
-                if (model is SimpleTiledModel && xnode.Get("textOutput", false))
-                    System.IO.File.WriteAllText($"{counter} {name} {i}.txt", (model as SimpleTiledModel).TextOutput());
-                    */
-                break;
             }
-            else Console.WriteLine("CONTRADICTION");
+            counter++;
         }
+        Write();
+    }
+
+    private static void Write()
+    {
+        if (!isDefault)
+        {
+            System.IO.File.WriteAllLines(Path.GetFullPath(FILE_NAME), _lines);
+        }        
+    }
+
+    private static void Output(string s)
+    {
+        if (isDefault)
+        {
+            Console.Write(s);
+        }
+        else
+        {
+            _lines.Add(s);
+        }        
     }
 
     private static void ParallelObserve()
@@ -96,9 +122,27 @@ static class Program
 
     private static void SequentialMain(Random random, Model model, XmlNode xnode)
     {
-        //throw new NotImplementedException();
-        DefaultExecution(random, model, xnode);
+        for (int k = 0; k < 10; k++)
+        {
+            string outputString = ">";
+            int seed = random.Next();
+            bool finished = model.Run(seed, xnode.Get("limit", 0));
+            if (finished)
+            {
+                outputString += "DONE" + newLine;
+                Output(outputString);
+                /*
+                model.Graphics().Save($"{counter} {s} {i}.png");
+                if (model is SimpleTiledModel && xnode.Get("textOutput", false))
+                    System.IO.File.WriteAllText($"{counter} {s} {i}.txt", (model as SimpleTiledModel).TextOutput());
+                */
+                break;
+            }
+            else
+            {
+                outputString += "CONTRADICTION" + newLine;
+                Output(outputString);
+            }            
+        }
     }
-
-    public static string mode { get; private set; }
 }

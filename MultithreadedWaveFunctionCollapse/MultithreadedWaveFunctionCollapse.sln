@@ -14,6 +14,7 @@ EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
+		Default|Any CPU = Default|Any CPU
 		P-Main|Any CPU = P-Main|Any CPU
 		P-Observe|Any CPU = P-Observe|Any CPU
 		P-Propagate|Any CPU = P-Propagate|Any CPU
@@ -23,6 +24,8 @@ Global
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{801840EA-1A29-4C72-A5F7-CAB25834F765}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{801840EA-1A29-4C72-A5F7-CAB25834F765}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{801840EA-1A29-4C72-A5F7-CAB25834F765}.Default|Any CPU.ActiveCfg = Default|Any CPU
+		{801840EA-1A29-4C72-A5F7-CAB25834F765}.Default|Any CPU.Build.0 = Default|Any CPU
 		{801840EA-1A29-4C72-A5F7-CAB25834F765}.P-Main|Any CPU.ActiveCfg = Debug - Parallel Main|Any CPU
 		{801840EA-1A29-4C72-A5F7-CAB25834F765}.P-Main|Any CPU.Build.0 = Debug - Parallel Main|Any CPU
 		{801840EA-1A29-4C72-A5F7-CAB25834F765}.P-Observe|Any CPU.ActiveCfg = Debug - Parallel Observe|Any CPU

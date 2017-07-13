@@ -23,10 +23,10 @@ class OverlappingModel : Model
 	public OverlappingModel(string name, int N, int width, int height, bool periodicInput, bool periodicOutput, int symmetry, int ground) 
 		: base(width, height)
 	{
-		this.N = N;
+	    this.N = N;
 		periodic = periodicOutput;
 
-		var bitmap = new Bitmap($"samples/{name}.png");
+	    var bitmap = new Bitmap($"samples/{name}.png");
 		int SMX = bitmap.Width, SMY = bitmap.Height;
 		byte[,] sample = new byte[SMX, SMY];
 		colors = new List<Color>();
