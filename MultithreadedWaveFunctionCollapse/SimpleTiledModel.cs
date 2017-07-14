@@ -7,11 +7,13 @@ The software is provided "as is", without warranty of any kind, express or impli
 */
 
 using System;
-using System.Xml;
-using System.Linq;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
-using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Xml;
 
 class SimpleTiledModel : Model
 {
@@ -38,16 +40,30 @@ class SimpleTiledModel : Model
 		if (subsetName != default(string))
 		{
 			subset = new List<string>();
-			foreach (XmlNode xsubset in xnode.NextSibling.NextSibling.ChildNodes) 
-				if (xsubset.NodeType != XmlNodeType.Comment && xsubset.Get<string>("name") == subsetName)
-					foreach (XmlNode stile in xsubset.ChildNodes) subset.Add(stile.Get<string>("name"));
-		}
+			foreach (XmlNode xsubset in xnode.NextSibling.NextSibling.ChildNodes)
+            {
+                if (xsubset.NodeType != XmlNodeType.Comment && xsubset.Get<string>("name") == subsetName)
+                {
+                    foreach (XmlNode stile in xsubset.ChildNodes)
+                    {
+                        subset.Add(stile.Get<string>("name"));
+                    }
+                }
+            }
+        }
 
 		Func<Func<int, int, Color>, Color[]> tile = f =>
 		{
 			Color[] result = new Color[tilesize * tilesize];
-			for (int y = 0; y < tilesize; y++) for (int x = 0; x < tilesize; x++) result[x + y * tilesize] = f(x, y);
-			return result;
+			for (int y = 0; y < tilesize; y++)
+            {
+                for (int x = 0; x < tilesize; x++)
+                {
+                    result[x + y * tilesize] = f(x, y);
+                }
+            }
+
+            return result;
 		};
 
 		Func<Color[], Color[]> rotate = array => tile((x, y) => array[tilesize - 1 - y + x * tilesize]);
@@ -62,9 +78,12 @@ class SimpleTiledModel : Model
 		foreach (XmlNode xtile in xnode.ChildNodes)
 		{
 			string tilename = xtile.Get<string>("name");
-			if (subset != null && !subset.Contains(tilename)) continue;
+			if (subset != null && !subset.Contains(tilename))
+            {
+                continue;
+            }
 
-			Func<int, int> a, b;
+            Func<int, int> a, b;
 			int cardinality;
 
 			char sym = xtile.Get("symmetry", 'X');
@@ -116,9 +135,12 @@ class SimpleTiledModel : Model
 				map[t][6] = b(a(a(t)));
 				map[t][7] = b(a(a(a(t))));
 
-				for (int s = 0; s < 8; s++) map[t][s] += T;
+				for (int s = 0; s < 8; s++)
+                {
+                    map[t][s] += T;
+                }
 
-				action.Add(map[t]);
+                action.Add(map[t]);
 			}
 
 			if (unique)
@@ -143,8 +165,11 @@ class SimpleTiledModel : Model
 				}
 			}
 
-			for (int t = 0; t < cardinality; t++) tempStationary.Add(xtile.Get("weight", 1.0f));
-		}
+			for (int t = 0; t < cardinality; t++)
+            {
+                tempStationary.Add(xtile.Get("weight", 1.0f));
+            }
+        }
 
 		T = action.Count;
 		stationary = tempStationary.ToArray();
@@ -155,19 +180,31 @@ class SimpleTiledModel : Model
 		{
 			tempPropagator[d] = new bool[T][];
 			propagator[d] = new int[T][];
-			for (int t = 0; t < T; t++) tempPropagator[d][t] = new bool[T];
-		}
+			for (int t = 0; t < T; t++)
+            {
+                tempPropagator[d][t] = new bool[T];
+            }
+        }
 
-		for (int x = 0; x < FMX; x++) for (int y = 0; y < FMY; y++) wave[x][y] = new bool[T];
+		for (int x = 0; x < FMX; x++)
+        {
+            for (int y = 0; y < FMY; y++)
+            {
+                wave[x][y] = new bool[T];
+            }
+        }
 
-		foreach (XmlNode xneighbor in xnode.NextSibling.ChildNodes)
+        foreach (XmlNode xneighbor in xnode.NextSibling.ChildNodes)
 		{
-			string[] left = xneighbor.Get<string>("left").Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-			string[] right = xneighbor.Get<string>("right").Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+			string[] left = xneighbor.Get<string>("left").Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+			string[] right = xneighbor.Get<string>("right").Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
 
-			if (subset != null && (!subset.Contains(left[0]) || !subset.Contains(right[0]))) continue;
+			if (subset != null && (!subset.Contains(left[0]) || !subset.Contains(right[0])))
+            {
+                continue;
+            }
 
-			int L = action[firstOccurrence[left[0]]][left.Length == 1 ? 0 : int.Parse(left[1])], D = action[L][1];
+            int L = action[firstOccurrence[left[0]]][left.Length == 1 ? 0 : int.Parse(left[1])], D = action[L][1];
 			int R = action[firstOccurrence[right[0]]][right.Length == 1 ? 0 : int.Parse(right[1])], U = action[R][1];
 
 			tempPropagator[0][R][L] = true;
@@ -181,101 +218,161 @@ class SimpleTiledModel : Model
 			tempPropagator[1][action[D][2]][action[U][2]] = true;
 		}
 
-		for (int t2 = 0; t2 < T; t2++) for (int t1 = 0; t1 < T; t1++)
+		for (int t2 = 0; t2 < T; t2++)
+        {
+            for (int t1 = 0; t1 < T; t1++)
 			{
 				tempPropagator[2][t2][t1] = tempPropagator[0][t1][t2];
 				tempPropagator[3][t2][t1] = tempPropagator[1][t1][t2];
 			}
+        }
 
-		List<int>[][] sparsePropagator = new List<int>[4][];
+        List<int>[][] sparsePropagator = new List<int>[4][];
 		for (int d = 0; d < 4; d++)
 		{
 			sparsePropagator[d] = new List<int>[T];
-			for (int t = 0; t < T; t++) sparsePropagator[d][t] = new List<int>();
-		}
+			for (int t = 0; t < T; t++)
+            {
+                sparsePropagator[d][t] = new List<int>();
+            }
+        }
 
-		for (int d = 0; d < 4; d++) for (int t1 = 0; t1 < T; t1++)
+		for (int d = 0; d < 4; d++)
+        {
+            for (int t1 = 0; t1 < T; t1++)
 			{
 				List<int> sp = sparsePropagator[d][t1];
 				bool[] tp = tempPropagator[d][t1];
 
-				for (int t2 = 0; t2 < T; t2++) if (tp[t2]) sp.Add(t2);
+				for (int t2 = 0; t2 < T; t2++)
+                {
+                    if (tp[t2])
+                    {
+                        sp.Add(t2);
+                    }
+                }
 
-				int ST = sp.Count;
+                int ST = sp.Count;
 				propagator[d][t1] = new int[ST];
-				for (int st = 0; st < ST; st++) propagator[d][t1][st] = sp[st];
-			}
-	}
+				for (int st = 0; st < ST; st++)
+                {
+                    propagator[d][t1][st] = sp[st];
+                }
+            }
+        }
+    }
 
 	protected override bool Propagate()
 	{
 		bool change = false, b;
-		for (int x2 = 0; x2 < FMX; x2++) for (int y2 = 0; y2 < FMY; y2++) for (int d = 0; d < 4; d++)
+		for (int x2 = 0; x2 < FMX; x2++)
+        {
+            for (int y2 = 0; y2 < FMY; y2++)
+            {
+                for (int d = 0; d < 4; d++)
 				{
 					int x1 = x2, y1 = y2;
 					if (d == 0)
 					{
 						if (x2 == 0)
 						{
-							if (!periodic) continue;
-							else x1 = FMX - 1;
+						    if (!periodic)
+                            {
+                                continue;
+                            }
+						    x1 = FMX - 1;
 						}
-						else x1 = x2 - 1;
-					}
+						else
+                        {
+                            x1 = x2 - 1;
+                        }
+                    }
 					else if (d == 1)
 					{
 						if (y2 == FMY - 1)
 						{
-							if (!periodic) continue;
-							else y1 = 0;
+						    if (!periodic)
+                            {
+                                continue;
+                            }
+
+                            y1 = 0;
 						}
-						else y1 = y2 + 1;
-					}
+						else
+                        {
+                            y1 = y2 + 1;
+                        }
+                    }
 					else if (d == 2)
 					{
 						if (x2 == FMX - 1)
 						{
-							if (!periodic) continue;
-							else x1 = 0;
+						    if (!periodic)
+                            {
+                                continue;
+                            }
+
+                            x1 = 0;
 						}
-						else x1 = x2 + 1;
-					}
+						else
+                        {
+                            x1 = x2 + 1;
+                        }
+                    }
 					else
 					{
 						if (y2 == 0)
 						{
-							if (!periodic) continue;
-							else y1 = FMY - 1;
+						    if (!periodic)
+                            {
+                                continue;
+                            }
+
+                            y1 = FMY - 1;
 						}
-						else y1 = y2 - 1;
-					}
+						else
+                        {
+                            y1 = y2 - 1;
+                        }
+                    }
 
-					if (!changes[x1][y1]) continue;
+					if (!changes[x1][y1])
+                    {
+                        continue;
+                    }
 
-					bool[] w1 = wave[x1][y1];
+                    bool[] w1 = wave[x1][y1];
 					bool[] w2 = wave[x2][y2];
 
 					for (int t2 = 0; t2 < T; t2++)
 					{
-						if (!w2[t2]) continue;
+						if (!w2[t2])
+                        {
+                            continue;
+                        }
 
-						b = false;
+                        b = false;
 						int[] prop = propagator[d][t2];
-						for (int i1 = 0; i1 < prop.Length && !b; i1++) b = w1[prop[i1]];
+						for (int i1 = 0; i1 < prop.Length && !b; i1++)
+                        {
+                            b = w1[prop[i1]];
+                        }
 
-						if (!b)
+                        if (!b)
 						{
 							changes[x2][y2] = true;
 							change = true;
 							w2[t2] = false;
 						}
 					}						
-				}			
+				}
+            }
+        }
 
-		return change;
+        return change;
 	}
 
-	protected override bool OnBoundary(int x, int y) => false;
+    protected override bool OnBoundary(int x, int y) => false;
 
 	public override Bitmap Graphics()
 	{
@@ -284,48 +381,66 @@ class SimpleTiledModel : Model
 
 		if (observed != null)
 		{
-			for (int x = 0; x < FMX; x++) for (int y = 0; y < FMY; y++)
-					{
+			for (int x = 0; x < FMX; x++)
+            {
+                for (int y = 0; y < FMY; y++)
+				{
 						Color[] tile = tiles[observed[x][y]];
-						for (int yt = 0; yt < tilesize; yt++) for (int xt = 0; xt < tilesize; xt++)
-							{
-								Color c = tile[xt + yt * tilesize];
-								bitmapData[x * tilesize + xt + (y * tilesize + yt) * FMX * tilesize] =
-									unchecked((int)0xff000000 | (c.R << 16) | (c.G << 8) | c.B);
-							}
-					}
-		}
+						for (int yt = 0; yt < tilesize; yt++)
+                        {
+                        for (int xt = 0; xt < tilesize; xt++)
+						{
+						    Color c = tile[xt + yt * tilesize];
+						    bitmapData[x * tilesize + xt + (y * tilesize + yt) * FMX * tilesize] =
+						        unchecked((int)0xff000000 | (c.R << 16) | (c.G << 8) | c.B);
+                        }
+                    }
+                }
+            }
+        }
 		else
 		{
-			for (int x = 0; x < FMX; x++) for (int y = 0; y < FMY; y++)
+			for (int x = 0; x < FMX; x++)
+            {
+                for (int y = 0; y < FMY; y++)
 				{
 					bool[] a = wave[x][y];
 					int amount = (from b in a where b select 1).Sum();
 					double lambda = 1.0 / (from t in Enumerable.Range(0, T) where a[t] select stationary[t]).Sum();
 
-					for (int yt = 0; yt < tilesize; yt++) for (int xt = 0; xt < tilesize; xt++)
+					for (int yt = 0; yt < tilesize; yt++)
+                    {
+                        for (int xt = 0; xt < tilesize; xt++)
 						{
-							if (black && amount == T) bitmapData[x * tilesize + xt + (y * tilesize + yt) * FMX * tilesize] = unchecked((int)0xff000000);
-							else
+							if (black && amount == T)
+                            {
+                                bitmapData[x * tilesize + xt + (y * tilesize + yt) * FMX * tilesize] = unchecked((int)0xff000000);
+                            }
+                            else
 							{
 								double r = 0, g = 0, b = 0;
-								for (int t = 0; t < T; t++) if (wave[x][y][t])
+								for (int t = 0; t < T; t++)
+                                {
+                                    if (wave[x][y][t])
 									{
 										Color c = tiles[t][xt + yt * tilesize];
-										r += (double)c.R * stationary[t] * lambda;
-										g += (double)c.G * stationary[t] * lambda;
-										b += (double)c.B * stationary[t] * lambda;
+										r += c.R * stationary[t] * lambda;
+										g += c.G * stationary[t] * lambda;
+										b += c.B * stationary[t] * lambda;
 									}
+                                }
 
-								bitmapData[x * tilesize + xt + (y * tilesize + yt) * FMX * tilesize] =
+                                bitmapData[x * tilesize + xt + (y * tilesize + yt) * FMX * tilesize] =
 									unchecked((int)0xff000000 | ((int)r << 16) | ((int)g << 8) | (int)b);
 							}
 						}
-				}
-		}
+                    }
+                }
+            }
+        }
 
 		var bits = result.LockBits(new Rectangle(0, 0, result.Width, result.Height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
-		System.Runtime.InteropServices.Marshal.Copy(bitmapData, 0, bits.Scan0, bitmapData.Length);
+		Marshal.Copy(bitmapData, 0, bits.Scan0, bitmapData.Length);
 		result.UnlockBits(bits);
 
 		return result;
@@ -333,18 +448,23 @@ class SimpleTiledModel : Model
 
 	public string TextOutput()
 	{
-		var result = new System.Text.StringBuilder();
+		var result = new StringBuilder();
 
 		for (int y = 0; y < FMY; y++)
 		{
 			for (int x = 0; x < FMX; x++)
-				for (int t = 0; t < T; t++) if (wave[x][y][t])
+            {
+                for (int t = 0; t < T; t++)
+                {
+                    if (wave[x][y][t])
 					{
 						result.Append($"{tilenames[t]}, ");
 						break;
 					}
+                }
+            }
 
-			result.Append(Environment.NewLine);
+            result.Append(Environment.NewLine);
 		}
 
 		return result.ToString();

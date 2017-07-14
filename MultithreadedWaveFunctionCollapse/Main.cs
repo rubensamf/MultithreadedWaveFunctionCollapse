@@ -47,17 +47,29 @@ static class Program
         int counter = 1;
         foreach (XmlNode xnode in xdoc.FirstChild.ChildNodes)
         {
-            if (xnode.Name == "#comment") continue;
+            if (xnode.Name == "#comment")
+            {
+                continue;
+            }
 
             Model model;
             string name = xnode.Get<string>("name");            
             Output($"< {name}" + newLine);
 
-            if (xnode.Name == "overlapping") model = new OverlappingModel(name, xnode.Get("N", 2), xnode.Get("width", 48), xnode.Get("height", 48),
+            if (xnode.Name == "overlapping")
+            {
+                model = new OverlappingModel(name, xnode.Get("N", 2), xnode.Get("width", 48), xnode.Get("height", 48),
                 xnode.Get("periodicInput", true), xnode.Get("periodic", false), xnode.Get("symmetry", 8), xnode.Get("ground", 0));
-            else if (xnode.Name == "simpletiled") model = new SimpleTiledModel(name, xnode.Get<string>("subset"),
+            }
+            else if (xnode.Name == "simpletiled")
+            {
+                model = new SimpleTiledModel(name, xnode.Get<string>("subset"),
                 xnode.Get("width", 10), xnode.Get("height", 10), xnode.Get("periodic", false), xnode.Get("black", false));
-            else continue;
+            }
+            else
+            {
+                continue;
+            }
 
             for (int screenshotNumber = 0; screenshotNumber < xnode.Get("screenshots", 2); screenshotNumber++)
             {
@@ -70,10 +82,10 @@ static class Program
                         ParallelMain(random, xnode, model, counter, name, screenshotNumber);
                         break;
                     case "parallel-propagate":
-                        ParallelPropagate();
+                        ParallelPropagate(random, model, xnode, counter, name, screenshotNumber);
                         break;
                     case "parallel-observe":
-                        ParallelObserve();
+                        ParallelObserve(random, model, xnode, counter, name, screenshotNumber);
                         break;
                     default:
                         SequentialMain(random, model, xnode, counter, name, screenshotNumber);
@@ -89,7 +101,7 @@ static class Program
     {
         if (!isDefault)
         {
-            System.IO.File.WriteAllLines(Path.GetFullPath(FILE_NAME), _lines);
+            File.WriteAllLines(Path.GetFullPath(FILE_NAME), _lines);
         }        
     }
 
@@ -104,19 +116,25 @@ static class Program
             _lines.Add(s);
         }        
     }
-    
-    private static void ParallelObserve()
+
+    private static void ParallelPropagate(Random random, Model model, XmlNode xnode, int counter, string name, int screenshotNumber)
     {
-        throw new NotImplementedException();
+        model.isParallelPropagate = true;
+        model.isParallelObserve = false;
+        SequentialMain(random, model, xnode, counter, name, screenshotNumber);
     }
 
-    private static void ParallelPropagate()
+    private static void ParallelObserve(Random random, Model model, XmlNode xnode, int counter, string name, int screenshotNumber)
     {
+        model.isParallelPropagate = false;
+        model.isParallelObserve = true;
         throw new NotImplementedException();
     }
 
     private static void SequentialMain(Random random, Model model, XmlNode xnode, int counter, string name, int screenshotNumber)
     {
+        model.isParallelPropagate = false;
+        model.isParallelObserve = false;
         for (int k = 0; k < 10; k++)
         {
             string outputString = ">";
@@ -129,20 +147,21 @@ static class Program
 
                 model.Graphics().Save($"{counter} {name} {screenshotNumber}.png");
                 if (model is SimpleTiledModel && xnode.Get("textOutput", false))
-                    System.IO.File.WriteAllText($"{counter} {name} {screenshotNumber}.txt", (model as SimpleTiledModel).TextOutput());
+                {
+                    File.WriteAllText($"{counter} {name} {screenshotNumber}.txt", (model as SimpleTiledModel).TextOutput());
+                }
 
                 break;
             }
-            else
-            {
-                outputString += "CONTRADICTION" + newLine;
-                Output(outputString);
-            }
+            outputString += "CONTRADICTION" + newLine;
+            Output(outputString);
         }
     }
 
     private static void ParallelMain(Random rand, XmlNode xnode, Model model, int counter, string name, int screenshotNumber)
     {
+        model.isParallelPropagate = false;
+        model.isParallelObserve = false;
         int workers = 1;
         Task[] tasks = new Task[workers];
         CancellationTokenSource source = new CancellationTokenSource();
@@ -175,15 +194,14 @@ static class Program
 
                 model.Graphics().Save($"{counter} {name} {screenshotNumber}.png");
                 if (model is SimpleTiledModel && xnode.Get("textOutput", false))
-                    System.IO.File.WriteAllText($"{counter} {name} {screenshotNumber}.txt", (model as SimpleTiledModel).TextOutput());
+                {
+                    File.WriteAllText($"{counter} {name} {screenshotNumber}.txt", (model as SimpleTiledModel).TextOutput());
+                }
 
                 break;
             }
-            else
-            {
-                outputString += "CONTRADICTION with " + id;
-                Output(outputString);
-            }
+            outputString += "CONTRADICTION with " + id;
+            Output(outputString);
         }
     }
 }
