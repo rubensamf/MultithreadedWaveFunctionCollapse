@@ -16,6 +16,7 @@ using System.Xml;
 static class Program
 {
     private const int ERROR_BAD_LENGTH = 24, seed = 1000;
+    private const bool CAN_WRITE_IMAGES = true;
     private static bool isDefault;      
     private static string MODE, FILE_NAME, newLine;
     private static List<string> _lines;
@@ -145,10 +146,14 @@ static class Program
                 outputString += "DONE" + newLine;
                 Output(outputString);
 
-                model.Graphics().Save($"{counter} {name} {screenshotNumber}.png");
-                if (model is SimpleTiledModel && xnode.Get("textOutput", false))
+                if (CAN_WRITE_IMAGES)
                 {
-                    File.WriteAllText($"{counter} {name} {screenshotNumber}.txt", (model as SimpleTiledModel).TextOutput());
+                    model.Graphics().Save($"{counter} {name} {screenshotNumber}.png");
+                    if (model is SimpleTiledModel && xnode.Get("textOutput", false))
+                    {
+                        File.WriteAllText($"{counter} {name} {screenshotNumber}.txt",
+                            (model as SimpleTiledModel).TextOutput());
+                    }
                 }
 
                 break;
@@ -192,10 +197,13 @@ static class Program
                 outputString += "DONE WITH " + id;
                 Output(outputString);
 
-                model.Graphics().Save($"{counter} {name} {screenshotNumber}.png");
-                if (model is SimpleTiledModel && xnode.Get("textOutput", false))
+                if (CAN_WRITE_IMAGES)
                 {
-                    File.WriteAllText($"{counter} {name} {screenshotNumber}.txt", (model as SimpleTiledModel).TextOutput());
+                    model.Graphics().Save($"{counter} {name} {screenshotNumber}.png");
+                    if (model is SimpleTiledModel && xnode.Get("textOutput", false))
+                    {
+                        File.WriteAllText($"{counter} {name} {screenshotNumber}.txt", (model as SimpleTiledModel).TextOutput());
+                    }
                 }
 
                 break;
