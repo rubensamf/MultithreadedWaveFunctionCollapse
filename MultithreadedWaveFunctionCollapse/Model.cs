@@ -23,7 +23,7 @@ abstract class Model
 	double[] logProb;
 	double logT;
 
-    internal int MAX_DEGREE_PARALLELISM = 1;
+    internal int maxParallelism = 1;
     internal bool isParallelPropagate = false;
     internal bool isParallelObserve = false;
 
