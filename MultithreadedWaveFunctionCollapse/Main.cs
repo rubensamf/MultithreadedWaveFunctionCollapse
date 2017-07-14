@@ -9,6 +9,8 @@ The software is provided "as is", without warranty of any kind, express or impli
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Xml;
 
 static class Program
@@ -36,9 +38,7 @@ static class Program
             _lines = new List<string>();
             isDefault = false;
         }
-        //newLine = isDefault ? Environment.NewLine : "\n";
         newLine = Environment.NewLine;
-        //newLine = "\n";
 
         Random random = new Random(seed);
         var xdoc = new XmlDocument();
@@ -59,15 +59,15 @@ static class Program
                 xnode.Get("width", 10), xnode.Get("height", 10), xnode.Get("periodic", false), xnode.Get("black", false));
             else continue;
 
-            for (int i = 0; i < xnode.Get("screenshots", 2); i++)
+            for (int screenshotNumber = 0; screenshotNumber < xnode.Get("screenshots", 2); screenshotNumber++)
             {
                 switch (MODE)
                 {
                     case "sequential-main":
-                        SequentialMain(random, model, xnode);
+                        SequentialMain(random, model, xnode, counter, name, screenshotNumber);
                         break;
                     case "parallel-main":
-                        ParallelMain();
+                        ParallelMain(random, xnode, model, counter, name, screenshotNumber);
                         break;
                     case "parallel-propagate":
                         ParallelPropagate();
@@ -76,7 +76,7 @@ static class Program
                         ParallelObserve();
                         break;
                     default:
-                        SequentialMain(random, model, xnode);
+                        SequentialMain(random, model, xnode, counter, name, screenshotNumber);
                         break;
                 }
             }
@@ -104,7 +104,7 @@ static class Program
             _lines.Add(s);
         }        
     }
-
+    
     private static void ParallelObserve()
     {
         throw new NotImplementedException();
@@ -115,12 +115,7 @@ static class Program
         throw new NotImplementedException();
     }
 
-    private static void ParallelMain()
-    {
-        throw new NotImplementedException();
-    }
-
-    private static void SequentialMain(Random random, Model model, XmlNode xnode)
+    private static void SequentialMain(Random random, Model model, XmlNode xnode, int counter, string name, int screenshotNumber)
     {
         for (int k = 0; k < 10; k++)
         {
@@ -131,18 +126,64 @@ static class Program
             {
                 outputString += "DONE" + newLine;
                 Output(outputString);
-                /*
-                model.Graphics().Save($"{counter} {s} {i}.png");
+
+                model.Graphics().Save($"{counter} {name} {screenshotNumber}.png");
                 if (model is SimpleTiledModel && xnode.Get("textOutput", false))
-                    System.IO.File.WriteAllText($"{counter} {s} {i}.txt", (model as SimpleTiledModel).TextOutput());
-                */
+                    System.IO.File.WriteAllText($"{counter} {name} {screenshotNumber}.txt", (model as SimpleTiledModel).TextOutput());
+
                 break;
             }
             else
             {
                 outputString += "CONTRADICTION" + newLine;
                 Output(outputString);
-            }            
+            }
+        }
+    }
+
+    private static void ParallelMain(Random rand, XmlNode xnode, Model model, int counter, string name, int screenshotNumber)
+    {
+        int workers = 1;
+        Task[] tasks = new Task[workers];
+        CancellationTokenSource source = new CancellationTokenSource();
+        CancellationToken token = source.Token;
+
+        for (int i = 0; i < workers; i++)
+        {
+            int id = i;
+            tasks[i] = Task.Run(
+                () =>
+                {
+                    Compute(id, token, rand, model, xnode, counter, name, screenshotNumber);
+                    source.Cancel();
+                });
+        }
+        Task.WaitAny(tasks);
+    }
+
+    private static void Compute(int id, CancellationToken token, Random random, Model model, XmlNode xnode, int counter, string name, int screenshotNumber)
+    {
+        for (int k = 0; k < 10; k++)
+        {
+            string outputString = ">";
+            int seed = random.Next();
+            bool finished = model.Run(seed, xnode.Get("limit", 0));
+            if (finished)
+            {
+                outputString += "DONE WITH " + id;
+                Output(outputString);
+
+                model.Graphics().Save($"{counter} {name} {screenshotNumber}.png");
+                if (model is SimpleTiledModel && xnode.Get("textOutput", false))
+                    System.IO.File.WriteAllText($"{counter} {name} {screenshotNumber}.txt", (model as SimpleTiledModel).TextOutput());
+
+                break;
+            }
+            else
+            {
+                outputString += "CONTRADICTION with " + id;
+                Output(outputString);
+            }
         }
     }
 }
