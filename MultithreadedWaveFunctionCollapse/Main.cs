@@ -8,18 +8,23 @@ The software is provided "as is", without warranty of any kind, express or impli
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
 
 static class Program
 {
-    private const int SEED = 1000, MAX_DEGREE_PARALLELISM = 2, NUM_WORKERS = 1, NUM_TRIALS = 10;
-    private const bool WRITE_IMAGES = false, REPORT_RESULTS = false;
+    public enum DisplayResults { LineByLine, ByImage, ByRun, AllAtOnce }
+
+    private const DisplayResults displayMode = DisplayResults.LineByLine;
+    private const int SEED = 1000, MAX_DEGREE_PARALLELISM = 2, NUM_WORKERS = 2, NUM_TRIES_MAIN_LOOP = 10, NUMBER_OF_RUNS = 100;
+    private const bool WRITE_IMAGES = true, DISPLAY_RUNTIME = true, REPORT_RESULTS = true;
     private const string RESULTS_FILE_NAME = "ScenarioResult", FILE_TYPE = ".csv";
 
-    private static List<string> _lines;
+    private static StringBuilder outputToDisplay;
     private static string MODE;
     private static Random random;
     private static XmlDocument xdoc;
@@ -31,18 +36,33 @@ static class Program
             Console.WriteLine("Usage: \n\nMultithreadedWaveFunctionCollapse\n\nOR\n\nMultithreadedWaveFunctionCollapse mode filename");
             Environment.Exit(exitCode: 24);
         }
-        _lines = new List<string>();
-        MODE = args.Length > 0 ? args[0] : "default";      
+
+        MODE = args.Length > 0 ? args[0] : "sequential-main";
+        random = new Random(SEED);
+        xdoc = new XmlDocument();
+        xdoc.Load("samples.xml");
     }
 
     static void Main(string[] args)
     {
         Initialize(args);
 
-        random = new Random(SEED);
-        xdoc = new XmlDocument();        
-        xdoc.Load("samples.xml");
+        ulong runtimes = 0;
+        for (int runNumber = 0; runNumber < NUMBER_OF_RUNS; runNumber++)
+        {
+            runtimes += (ulong) Execute(Stopwatch.StartNew());
+        }
+        if (DISPLAY_RUNTIME)
+        {
+            Console.WriteLine("===================================");
+            Console.WriteLine(MODE + " average runtime after " + NUMBER_OF_RUNS + " run(s): " + (runtimes / NUMBER_OF_RUNS) + " ms");
+            Console.WriteLine("===================================");
+        }
+    }
 
+    private static long Execute(Stopwatch timer)
+    {
+        outputToDisplay = new StringBuilder();
         int counter = 1;
         foreach (XmlNode xnode in xdoc.FirstChild.ChildNodes)
         {
@@ -53,85 +73,142 @@ static class Program
 
             var name = xnode.Get<string>("name");
             Console.WriteLine($"< {name}");
+            //outputToDisplay.AppendLine($"< {name}");
 
-            Model model;
-            switch (xnode.Name)
-            {
-                case "overlapping":
-                    model = new OverlappingModel(name, xnode.Get("N", 2), xnode.Get("width", 48), xnode.Get("height", 48),
-                        xnode.Get("periodicInput", true), xnode.Get("periodic", false), xnode.Get("symmetry", 8), xnode.Get("ground", 0));
-                    break;
-                case "simpletiled":
-                    model = new SimpleTiledModel(name, xnode.Get<string>("subset"),
-                        xnode.Get("width", 10), xnode.Get("height", 10), xnode.Get("periodic", false), xnode.Get("black", false));
-                    break;
-                default:
-                    continue;
-            }
-
-            for (int screenshotNumber = 0; screenshotNumber < xnode.Get("screenshots", 2); screenshotNumber++)
-            {
-                switch (MODE)
-                {
-                    case "sequential-main":
-                        SequentialMain(xnode, model, name, counter, screenshotNumber);
-                        break;
-                    case "parallel-main":
-                        ParallelMain(xnode, model, name, counter, screenshotNumber);
-                        break;
-                    case "parallel-propagate":                        
-                        ParallelPropagate(xnode, model, name, counter, screenshotNumber);
-                        break;
-                    case "parallel-observe":
-                        ParallelObserve(xnode, model, name, counter, screenshotNumber);
-                        break;
-                    default:
-                        SequentialMain(xnode, model, name, counter, screenshotNumber);
-                        break;
-                }
-            }
+           
+            Run(counter, xnode, name);
             counter++;
         }
-        WriteScenarioResults();
-    }    
+        //Display();
+        return timer.ElapsedMilliseconds;
+    }
 
-    private static void WriteScenarioResults()
-    {
-        if (REPORT_RESULTS)
+    private static void Run(int counter, XmlNode xnode, string name)
+    {        
+        for (int screenshotNumber = 0; screenshotNumber < xnode.Get("screenshots", 2); screenshotNumber++)
         {
-            File.WriteAllLines(Path.GetFullPath(RESULTS_FILE_NAME + FILE_TYPE), _lines);
+            switch (MODE)
+            {
+                case "parallel-main":
+                    ParallelMain(xnode, name, counter, screenshotNumber);
+                    break;
+                case "parallel-propagate":
+                    ParallelPropagate(xnode, name, counter, screenshotNumber);
+                    break;
+                case "parallel-observe":
+                    ParallelObserve(xnode, name, counter, screenshotNumber);
+                    break;
+                default:
+                    SequentialMain(xnode, name, counter, screenshotNumber);
+                    break;
+            }
+        }
+    }
+
+    private static void Display()
+    {
+        if (displayMode == DisplayResults.AllAtOnce)
+        {
+            Display(new StringBuilder());
         }        
     }
 
-    private static void ParallelPropagate(XmlNode xnode, Model model, string name, int counter, int screenshotNumber)
-    {
-        model.isParallelPropagate = true;
-        model.isParallelObserve = false;
-        SequentialMain(xnode, model, name, counter, screenshotNumber);
+    private static void Display(StringBuilder output)
+    {      
+        switch (displayMode)
+        {            
+            case DisplayResults.ByImage:                
+                break;
+            
+            case DisplayResults.ByRun:                
+                break;
+
+            case DisplayResults.AllAtOnce:
+                Console.WriteLine(outputToDisplay);
+                break;
+
+            default:
+                Console.WriteLine(output);
+                break;
+        }
     }
 
-    private static void ParallelObserve(XmlNode xnode, Model model, string name, int counter, int screenshotNumber)
+    private static void ParallelPropagate(XmlNode xnode,  string name, int counter, int screenshotNumber)
     {
+        Model model;
+        switch (xnode.Name)
+        {
+            case "overlapping":
+                model = new OverlappingModel(name, xnode.Get("N", 2), xnode.Get("width", 48), xnode.Get("height", 48),
+                    xnode.Get("periodicInput", true), xnode.Get("periodic", false), xnode.Get("symmetry", 8), xnode.Get("ground", 0));
+                break;
+            case "simpletiled":
+                model = new SimpleTiledModel(name, xnode.Get<string>("subset"),
+                    xnode.Get("width", 10), xnode.Get("height", 10), xnode.Get("periodic", false), xnode.Get("black", false));
+                break;
+            default:
+                return;
+        }
+
+        model.isParallelPropagate = true;
+        model.isParallelObserve = false;
+        SequentialMain(xnode, name, counter, screenshotNumber);
+    }
+
+    private static void ParallelObserve(XmlNode xnode,  string name, int counter, int screenshotNumber)
+    {
+        Model model;
+        switch (xnode.Name)
+        {
+            case "overlapping":
+                model = new OverlappingModel(name, xnode.Get("N", 2), xnode.Get("width", 48), xnode.Get("height", 48),
+                    xnode.Get("periodicInput", true), xnode.Get("periodic", false), xnode.Get("symmetry", 8), xnode.Get("ground", 0));
+                break;
+            case "simpletiled":
+                model = new SimpleTiledModel(name, xnode.Get<string>("subset"),
+                    xnode.Get("width", 10), xnode.Get("height", 10), xnode.Get("periodic", false), xnode.Get("black", false));
+                break;
+            default:
+                return;
+        }
+
         model.maxParallelism = MAX_DEGREE_PARALLELISM;
         model.isParallelPropagate = false;
         model.isParallelObserve = true;
         throw new NotImplementedException();
-        SequentialMain(xnode, model, name, counter, screenshotNumber);
+        SequentialMain(xnode, name, counter, screenshotNumber);
     }
 
-    private static void SequentialMain(XmlNode xnode, Model model, string name, int counter, int screenshotNumber)
+    private static void SequentialMain(XmlNode xnode, string name, int counter, int screenshotNumber)
     {
+
+        Model model;
+        switch (xnode.Name)
+        {
+            case "overlapping":
+                model = new OverlappingModel(name, xnode.Get("N", 2), xnode.Get("width", 48), xnode.Get("height", 48),
+                    xnode.Get("periodicInput", true), xnode.Get("periodic", false), xnode.Get("symmetry", 8), xnode.Get("ground", 0));
+                break;
+            case "simpletiled":
+                model = new SimpleTiledModel(name, xnode.Get<string>("subset"),
+                    xnode.Get("width", 10), xnode.Get("height", 10), xnode.Get("periodic", false), xnode.Get("black", false));
+                break;
+            default:
+                return;
+        }
+
         model.isParallelPropagate = false;
         model.isParallelObserve = false;
-        for (int k = 0; k < NUM_TRIALS; k++)
+        for (int k = 0; k < NUM_TRIES_MAIN_LOOP; k++)
         {
             Console.Write(">");
+            //outputToDisplay.Append(">");
             int seed = random.Next();
             bool finished = model.Run(seed, xnode.Get("limit", 0));
             if (finished)
             {
                 Console.WriteLine("DONE");
-
+                //outputToDisplay.AppendLine("DONE");
                 if (WRITE_IMAGES)
                 {
                     model.Graphics().Save($"{counter} {name} {screenshotNumber}.png");
@@ -144,15 +221,28 @@ static class Program
 
                 break;
             }
-            else
-            {
-                Console.WriteLine("CONTRADICTION");
-            }
+            Console.WriteLine("CONTRADICTION");
+            //outputToDisplay.AppendLine("CONTRADICTION");
         }
     }
 
-    private static void ParallelMain(XmlNode xnode, Model model, string name, int counter, int screenshotNumber)
+    private static void ParallelMain(XmlNode xnode, string name, int counter, int screenshotNumber)
     {
+        Model model;
+        switch (xnode.Name)
+        {
+            case "overlapping":
+                model = new OverlappingModel(name, xnode.Get("N", 2), xnode.Get("width", 48), xnode.Get("height", 48),
+                    xnode.Get("periodicInput", true), xnode.Get("periodic", false), xnode.Get("symmetry", 8), xnode.Get("ground", 0));
+                break;
+            case "simpletiled":
+                model = new SimpleTiledModel(name, xnode.Get<string>("subset"),
+                    xnode.Get("width", 10), xnode.Get("height", 10), xnode.Get("periodic", false), xnode.Get("black", false));
+                break;
+            default:
+                return;
+        }
+
         model.isParallelPropagate = false;
         model.isParallelObserve = false;
         Task[] tasks = new Task[NUM_WORKERS];
@@ -165,23 +255,39 @@ static class Program
             tasks[i] = Task.Run(
                 () =>
                 {
-                    Compute(xnode, model, name, counter, screenshotNumber, id);
+                    Compute(xnode, name, counter, screenshotNumber, id);
                     source.Cancel();
                 });
         }
         Task.WaitAny(tasks);
     }
   
-    private static void Compute(XmlNode xnode, Model model, string name, int counter, int screenshotNumber, int id)
+    private static void Compute(XmlNode xnode, string name, int counter, int screenshotNumber, int id)
     {
-        for (int k = 0; k < NUM_TRIALS; k++)
+        Model model;
+        switch (xnode.Name)
+        {
+            case "overlapping":
+                model = new OverlappingModel(name, xnode.Get("N", 2), xnode.Get("width", 48), xnode.Get("height", 48),
+                    xnode.Get("periodicInput", true), xnode.Get("periodic", false), xnode.Get("symmetry", 8), xnode.Get("ground", 0));
+                break;
+            case "simpletiled":
+                model = new SimpleTiledModel(name, xnode.Get<string>("subset"),
+                    xnode.Get("width", 10), xnode.Get("height", 10), xnode.Get("periodic", false), xnode.Get("black", false));
+                break;
+            default:
+                return;
+        }
+        for (int k = 0; k < NUM_TRIES_MAIN_LOOP; k++)
         {
             Console.Write(">");
+            //outputToDisplay.Append(">");
             int seed = random.Next();
             bool finished = model.Run(seed, xnode.Get("limit", 0));
             if (finished)
             {
                 Console.WriteLine("DONE WITH " + id);
+                //outputToDisplay.AppendLine("DONE WITH " + id);
 
                 if (WRITE_IMAGES)
                 {
@@ -195,6 +301,7 @@ static class Program
                 break;
             }
             Console.WriteLine("CONTRADICTION with " + id);
+            //outputToDisplay.AppendLine("CONTRADICTION with " + id);
         }
     }
 }
