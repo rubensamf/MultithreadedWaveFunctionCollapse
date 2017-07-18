@@ -20,15 +20,35 @@ static class Program
     private const int num_req_args = 6;
     private static Random rand;
     private static XmlDocument xdoc;
-    private static int seed, max_degree_parallelism, num_workers, num_main_loop_iterations, num_trials;
+    private static int seed, max_degree_parallelism, num_workers, num_trials, num_main_loop_iterations;
     private static bool write_images;
     private static string[] executions;
 
     static void Main(string[] args)
     {
         InitializeAndLoad(args);
-        DisplayTime(Execute());
+        ulong[] runtimes = new ulong[num_main_loop_iterations];
+        for (int i = 0; i < num_main_loop_iterations; i++)
+        {
+           runtimes[i] = DisplayTime(Execute(), i);
+        }
+
+        WriteRuntimes(runtimes);
         waitForESCKey();
+    }
+
+    private static void WriteRuntimes(ulong[] runtimes)
+    {
+        StringBuilder sb = new StringBuilder("Execution Name, Seed, Max Degree of Parallelism, Number of Workers, Number of Trials, Number of Main Loop Iterations, Runtime (ms)\n");       
+        for (int i = 0; i < runtimes.Length; i++)
+        {            
+            string line = executions[0] + ", " + seed + ", "+max_degree_parallelism+", "+num_workers+", "
+                            +num_trials+", "+num_main_loop_iterations+", "+ runtimes[i] +"\n";
+            sb.Append(line);
+        }
+
+        string path = Directory.GetCurrentDirectory() + "\\" + "MultithreadedWaveFunctionCollapseResults.csv";
+        System.IO.File.WriteAllText(path, sb.ToString());
     }
 
     private static void InitializeAndLoad(string[] args)
@@ -43,8 +63,8 @@ static class Program
         seed = Convert.ToInt32(args[0]);
         max_degree_parallelism = Convert.ToInt32(args[1]);
         num_workers = Convert.ToInt32(args[2]);
-        num_main_loop_iterations = Convert.ToInt32(args[3]);
-        num_trials = Convert.ToInt32(args[4]);
+        num_trials = Convert.ToInt32(args[3]);
+        num_main_loop_iterations = Convert.ToInt32(args[4]);
         write_images = Convert.ToBoolean(args[5]);
 
         rand = new Random(seed);
@@ -69,7 +89,7 @@ static class Program
         }
     }
 
-    private static ulong DisplayTime(TimeSpan[] execution_times)
+    private static ulong DisplayTime(TimeSpan[] execution_times, int trial_num)
     {
         Console.WriteLine();
         ulong total_runtime = 0;
@@ -78,7 +98,7 @@ static class Program
             Console.WriteLine(executions[i] + "[" + i +"]" + " execution time: " + execution_times[i]);
             total_runtime += (ulong) execution_times[i].TotalMilliseconds;
         }
-        Console.WriteLine("Total Runtime: " + total_runtime + " ms");
+        Console.WriteLine("Trial " + trial_num + " Runtime: " + total_runtime + " ms\n");
 
         return total_runtime;
     }
@@ -125,16 +145,16 @@ static class Program
         switch (wfc_version)
         {
             case "parallel-main":
-                wfc = new ParallelMain(num_main_loop_iterations, rand, write_images, num_workers);
+                wfc = new ParallelMain(num_trials, rand, write_images, num_workers);
                 break;
             case "parallel-propagate":
-                wfc = new ParallelPropagate(num_main_loop_iterations, rand, write_images);
+                wfc = new ParallelPropagate(num_trials, rand, write_images);
                 break;
             case "parallel-observe":
-                wfc = new ParallelObserve(num_main_loop_iterations, rand, write_images);
+                wfc = new ParallelObserve(num_trials, rand, write_images);
                 break;
             default:
-                wfc = new SequentialMain(num_main_loop_iterations, rand, write_images);
+                wfc = new SequentialMain(num_trials, rand, write_images);
                 break;
         }
         wfc.Run(xnode, counter, screenshotNumber);
