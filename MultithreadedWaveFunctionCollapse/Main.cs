@@ -39,10 +39,10 @@ static class Program
 
     private static void WriteRuntimes(ulong[] runtimes)
     {
-        StringBuilder sb = new StringBuilder("Execution Name, Seed, Max Degree of Parallelism, Number of Workers, Number of Trials, Number of Main Loop Iterations, Runtime (ms)\n");       
+        StringBuilder sb = new StringBuilder("Runtime Number, Execution Name, Seed, Max Degree of Parallelism, Number of Workers, Number of Trials, Number of Main Loop Iterations, Runtime (ms)\n");       
         for (int i = 0; i < runtimes.Length; i++)
         {            
-            string line = executions[0] + ", " + seed + ", "+max_degree_parallelism+", "+num_workers+", "
+            string line = i + ", " + executions[0] + ", " + seed + ", "+max_degree_parallelism+", "+num_workers+", "
                             +num_trials+", "+num_main_loop_iterations+", "+ runtimes[i] +"\n";
             sb.Append(line);
         }
@@ -55,7 +55,8 @@ static class Program
     {
         if (args.Length < num_req_args)
         {
-            Console.WriteLine("Usage: MultithreadedWaveFunctionCollapse ...");
+            Console.WriteLine("Usage: MultithreadedWaveFunctionCollapse int_seed int_max_degree_of_parallelism " +
+                                "int_number_of_workers int_number_of_trials int_number_of_main_loop_iterations bool_write_images execution_mode ... execution_mode");
             waitForESCKey();
             Environment.Exit(exitCode: 24);
         }
@@ -74,6 +75,7 @@ static class Program
         for (int j = num_req_args; j < args.Length; j++)
         {
             executions[i] = args[j];
+            ValidExecutionName(executions[i], j);
             i++;
         }
         
@@ -89,13 +91,33 @@ static class Program
         }
     }
 
+    private static bool ValidExecutionName(string v, int j)
+    {
+        switch (v)
+        {
+            case "parallel-main":
+                return true;
+            case "parallel-propagate":
+                return true;
+            case "parallel-observe":
+                return true;
+            case "sequential-main":
+                return true;
+            default:
+                Console.WriteLine(j+"th argument " + v +" is invalid");
+                Console.WriteLine("Use only one of the following: sequential-main, parallel-main, parallel-propagate, or parallel-observe");
+                Environment.Exit(1);
+                return false;
+        }
+    }
+
     private static ulong DisplayTime(TimeSpan[] execution_times, int trial_num)
     {
         Console.WriteLine();
         ulong total_runtime = 0;
         for (int i = 0; i < execution_times.Length; i++)
         {
-            Console.WriteLine(executions[i] + "[" + i +"]" + " execution time: " + execution_times[i]);
+            Console.WriteLine(executions[i] + " execution time: " + execution_times[i]);
             total_runtime += (ulong) execution_times[i].TotalMilliseconds;
         }
         Console.WriteLine("Trial " + trial_num + " Runtime: " + total_runtime + " ms\n");
