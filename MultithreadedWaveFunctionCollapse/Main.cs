@@ -17,7 +17,6 @@ using System.Xml;
 
 static class Program
 {
-    private const int num_req_args = 6;
     private static Random rand;
     private static XmlDocument xdoc;
     private static int seed, num_trials, num_main_loop_iterations;
@@ -26,7 +25,7 @@ static class Program
     private static string cur_execution;
     private static int[] max_degree_parallelism, num_workers;
     private static int cur_max_degree_parallelism, cur_num_workers;
-
+    private static int SCALE_FACTOR;
 
     static void Main(string[] args)
     {
@@ -34,7 +33,7 @@ static class Program
         List<string[]> runtimes = new List<string[]>(num_main_loop_iterations);
         for (int i = 0; i < num_main_loop_iterations; i++)
         {
-           runtimes.Add(DisplayTime(Execute(), i));
+            runtimes.Add(DisplayTime(Execute(), i));
         }
 
         WriteRuntimes(runtimes);
@@ -43,51 +42,22 @@ static class Program
 
     private static void InitializeAndLoad(string[] args)
     {
-        if (args.Length < num_req_args)
-        {
-            Console.WriteLine("Usage: MultithreadedWaveFunctionCollapse bool_write_images int_seed int_number_of_main_loop_iterations int_number_of_trials " +
-                "execution_mode int_max_degree_of_parallelism int_number_of_workers ... " +
-                "(execution_mode int_max_degree_of_parallelism int_number_of_workers)");
-            WaitForEscKey();
-            Environment.Exit(exitCode: 24);
-        }
         try
         {
             write_images = Convert.ToBoolean(args[0]);
             seed = Convert.ToInt32(args[1]);
             num_main_loop_iterations = Convert.ToInt32(args[2]);
             num_trials = Convert.ToInt32(args[3]);
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine("Invalid argument");
-            Console.WriteLine("Usage: MultithreadedWaveFunctionCollapse bool_write_images int_seed int_number_of_main_loop_iterations int_number_of_trials " +
-                "execution_mode int_max_degree_of_parallelism int_number_of_workers ... " +
-                "(execution_mode int_max_degree_of_parallelism int_number_of_workers)");
-            WaitForEscKey();
-            Environment.Exit(exitCode: 24);
-        }
+            SCALE_FACTOR = Convert.ToInt32(args[4]);
 
-        if ((args.Length % 3) != 1)
-        {
-            Console.WriteLine(args.Length);
-            Console.WriteLine("Invalid number of arguments");
-            Console.WriteLine("Usage: MultithreadedWaveFunctionCollapse bool_write_images int_seed int_number_of_main_loop_iterations int_number_of_trials " +
-                "execution_mode int_max_degree_of_parallelism int_number_of_workers ... " +
-                "(execution_mode int_max_degree_of_parallelism int_number_of_workers)");
-            WaitForEscKey();
-            Environment.Exit(exitCode: 24);
-        }
-        int num_execution_modes = ((args.Length - num_req_args) / 3) + 1;
-        
-        execution = new string[num_execution_modes];
-        max_degree_parallelism = new int[num_execution_modes];
-        num_workers = new int[num_execution_modes];
-        
-        try
-        {
+            int num_execution_modes = (args.Length - 5) / 3;
+
+            execution = new string[num_execution_modes];
+            max_degree_parallelism = new int[num_execution_modes];
+            num_workers = new int[num_execution_modes];
+
             int i = 0;
-            for (int j = 4; j < args.Length; j+=3)
+            for (int j = 5; j < args.Length; j += 3)
             {
                 execution[i] = args[j];
                 max_degree_parallelism[i] = Convert.ToInt32(args[j + 1]);
@@ -95,28 +65,19 @@ static class Program
                 ValidExecutionName(execution[i], j);
                 i++;
             }
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine("Execution Invalid argument");
-            Console.WriteLine("Usage: MultithreadedWaveFunctionCollapse bool_write_images int_seed int_number_of_main_loop_iterations int_number_of_trials " +
-                "execution_mode int_max_degree_of_parallelism int_number_of_workers ... " +
-                "(execution_mode int_max_degree_of_parallelism int_number_of_workers)");
-            WaitForEscKey();
-            Environment.Exit(exitCode: 24);
-        }
 
-        rand = new Random(seed);
-        xdoc = new XmlDocument();
-        try
-        {
+            rand = new Random(seed);
+            xdoc = new XmlDocument();
+
             xdoc.Load("samples.xml");
         }
         catch (Exception e)
         {
-            Console.WriteLine("samples.xml could not be loaded");
+            Console.WriteLine("Usage: MultithreadedWaveFunctionCollapse bool_write_images int_seed int_number_of_main_loop_iterations int_number_of_trials scale_factor " +
+                "execution_mode int_max_degree_of_parallelism int_number_of_workers ... " +
+                "(execution_mode int_max_degree_of_parallelism int_number_of_workers)");
             WaitForEscKey();
-            Environment.Exit(exitCode: 2);
+            Environment.Exit(exitCode: 24);
         }
     }
 
@@ -131,9 +92,9 @@ static class Program
             case "parallel-propagate":
                 return true;
             case "parallel-observe":
-                return true;            
+                return true;
             default:
-                Console.WriteLine(j+"th argument " + v +" is invalid");
+                Console.WriteLine(j + "th argument " + v + " is invalid");
                 Console.WriteLine("Use only one of the following: sequential-main, parallel-main, parallel-propagate, or parallel-observe");
                 Environment.Exit(1);
                 return false;
@@ -148,10 +109,11 @@ static class Program
         for (int i = 0; i < execution.Length; i++)
         {
             Console.WriteLine(execution[i] + " execution time: " + execution_times[i]);
-            lines[i] = run_num + ", " + execution[i] + ", " + seed + ", " + max_degree_parallelism[i] + ", " + 
-                            num_workers[i] + ", " + num_trials + ", " + num_main_loop_iterations + ", " + execution_times[i];            
+            lines[i] = run_num + ", " + SCALE_FACTOR + ", " + execution[i] + ", " + seed + ", " + max_degree_parallelism[i] + ", " +
+                num_workers[i] + ", " + num_trials + ", " + num_main_loop_iterations + ", " + execution_times[i];
             total_runtime += (ulong) execution_times[i].TotalMilliseconds;
         }
+
         Console.WriteLine("Run #" + run_num + " Runtime: " + total_runtime + " ms\n");
 
         return lines;
@@ -159,30 +121,13 @@ static class Program
 
     private static void WriteRuntimes(List<string[]> runs)
     {
-        StringBuilder sb = new StringBuilder("Run Number, Execution Name, Seed, Max Degree of Parallelism, Number of Workers, Number of Trials, Number of Main Loop Iterations, Runtime (ms)\n");
+        StringBuilder sb = new StringBuilder("Run Number, Scale Factor, Execution Name, Seed, Max Degree of Parallelism, Number of Workers, Number of Trials, Number of Main Loop Iterations, Runtime (ms)\n");
 
         foreach (var runtimes in runs)
         {
             foreach (var runtime in runtimes)
             {
-                sb.Append(runtime+"\n");
-            }
-        }
-
-        string path = Directory.GetCurrentDirectory() + "\\" + "MultithreadedWaveFunctionCollapseResults.csv";
-        System.IO.File.WriteAllText(path, sb.ToString());
-    }
-
-    private static void WriteRuntimes(ulong[] runtimes)
-    {
-        StringBuilder sb = new StringBuilder("Runtime Number, Execution Name, Seed, Max Degree of Parallelism, Number of Workers, Number of Trials, Number of Main Loop Iterations, Runtime (ms)\n");
-        for (int i = 0; i < runtimes.Length; i++)
-        {
-            for (int j = 0; j < execution.Length; j++)
-            {
-                string line = i + ", " + execution[j] + ", " + seed + ", " + max_degree_parallelism[j] + ", " + num_workers[j] + ", "
-                    + num_trials + ", " + num_main_loop_iterations + ", " + runtimes[i] + "\n";
-                sb.Append(line);
+                sb.Append(runtime + "\n");
             }
         }
 
@@ -195,6 +140,7 @@ static class Program
         TimeSpan[] runtimes = new TimeSpan[execution.Length];
         for (int i = 0; i < execution.Length; i++)
         {
+            rand = new Random(seed);
             cur_execution = execution[i];
             cur_max_degree_parallelism = max_degree_parallelism[i];
             cur_num_workers = num_workers[i];
@@ -206,6 +152,7 @@ static class Program
 
     private static TimeSpan Run(Stopwatch watch)
     {
+        watch.Stop();
         //Run WFC
         int counter = 1;
         foreach (XmlNode xnode in xdoc.FirstChild.ChildNodes)
@@ -220,54 +167,54 @@ static class Program
 
             for (int screenshotNumber = 0; screenshotNumber < xnode.Get("screenshots", 2); screenshotNumber++)
             {
-                WFC(xnode, counter, screenshotNumber);
+                WFC(xnode, counter, screenshotNumber, watch);
             }
+
             counter++;
         }
         //End WFC
-        watch.Stop();
+        //watch.Stop();
         return watch.Elapsed;
     }
 
-    private static void WFC(XmlNode xnode, int counter, int screenshotNumber)
+    private static Stopwatch WFC(XmlNode xnode, int counter, int screenshotNumber, Stopwatch watch)
     {
         WaveFunctionCollapse wfc;
         switch (cur_execution)
         {
             case "parallel-main":
-                wfc = new ParallelMain(num_trials, rand, write_images, cur_num_workers);
+                wfc = new ParallelMain(num_trials, rand, write_images, cur_num_workers, SCALE_FACTOR, seed);
                 break;
             case "parallel-propagate":
-                wfc = new ParallelPropagate(num_trials, rand, write_images, cur_max_degree_parallelism);
+                wfc = new ParallelPropagate(num_trials, rand, write_images, cur_max_degree_parallelism, SCALE_FACTOR, seed);
                 break;
             case "parallel-observe":
-                wfc = new ParallelObserve(num_trials, rand, write_images, cur_max_degree_parallelism);
+                wfc = new ParallelObserve(num_trials, rand, write_images, cur_max_degree_parallelism, SCALE_FACTOR, seed);
                 break;
             default:
-                wfc = new SequentialMain(num_trials, rand, write_images);
+                wfc = new SequentialMain(num_trials, rand, write_images, SCALE_FACTOR, seed);
                 break;
         }
 
-        wfc.Run(xnode, counter, screenshotNumber);
+        return wfc.Run(xnode, counter, screenshotNumber, watch);
     }
 
     private static void WaitForEscKey()
     {
         Console.WriteLine("\nPress ESC to stop");
-        do
-        {
-        }
+        do { }
         while (Console.ReadKey(true).Key != ConsoleKey.Escape);
     }
 }
 
 internal abstract class WaveFunctionCollapse
 {
-    public readonly int _numTriesMainLoop;
-    public int _numWorkers = 1, _maxParallelism = 1;
-    public readonly Random _random;
-    public readonly bool _writeImages;
-    public bool _parallel_propagate, _parallel_observe;
+    protected readonly int _numTriesMainLoop;
+    protected int _numWorkers = 1, _maxParallelism = 1;
+    protected readonly Random _random;
+    protected readonly bool _writeImages;
+    protected bool _parallel_propagate, _parallel_observe;
+    protected int SCALE_FACTOR, SEED;
 
     protected WaveFunctionCollapse(int numTriesMainLoop, Random random, bool writeImages)
     {
@@ -276,14 +223,14 @@ internal abstract class WaveFunctionCollapse
         _writeImages = writeImages;
     }
 
-    public abstract void Run(XmlNode xnode, int counter, int screenshotNumber);
+    public abstract Stopwatch Run(XmlNode xnode, int counter, int screenshotNumber, Stopwatch watch);
 
-    internal void RunSequential(XmlNode xnode, int counter, int screenshotNumber)
+    internal Stopwatch RunSequential(XmlNode xnode, int counter, int screenshotNumber, Stopwatch watch)
     {
-        Compute(GetModel(xnode), xnode, counter, screenshotNumber, -1);
+        return Compute(GetModel(xnode), xnode, counter, screenshotNumber, -1, watch);
     }
 
-    internal void RunParallel(XmlNode xnode, int counter, int screenshotNumber)
+    internal Stopwatch RunParallel(XmlNode xnode, int counter, int screenshotNumber, Stopwatch watch)
     {
         Task[] tasks = new Task[_numWorkers];
         CancellationTokenSource source = new CancellationTokenSource();
@@ -296,23 +243,27 @@ internal abstract class WaveFunctionCollapse
                 () =>
                 {
                     Model model = GetModel(xnode);
-                    Compute(model, xnode, counter, screenshotNumber, id);
+                    Compute(model, xnode, counter, screenshotNumber, id, watch);
                     source.Cancel();
                 });
         }
 
         Task.WaitAny(tasks);
+        return watch;
     }
 
-    private void Compute(Model model, XmlNode xnode, int counter, int screenshotNumber, int id)
+    private Stopwatch Compute(Model model, XmlNode xnode, int counter, int screenshotNumber, int id, Stopwatch watch)
     {
         var name = xnode.Get<string>("name");
         string ID_String = (id < 0) ? ("") : (" WITH " + id);
         for (int k = 0; k < _numTriesMainLoop; k++)
         {
             Console.Write(">");
-            int seed = _random.Next();
+            //int seed = _random.Next();
+            int seed = SEED;
+            watch.Restart();
             bool finished = model.Run(seed, xnode.Get("limit", 0));
+            watch.Stop();
             if (finished)
             {
                 Console.WriteLine("DONE" + ID_String);
@@ -327,8 +278,11 @@ internal abstract class WaveFunctionCollapse
                 }
                 break;
             }
+
             Console.WriteLine("CONTRADICTION" + ID_String);
         }
+
+        return watch;
     }
 
     private Model GetModel(XmlNode xnode)
@@ -336,14 +290,14 @@ internal abstract class WaveFunctionCollapse
         Model model;
         string name = xnode.Get<string>("name");
         switch (xnode.Name)
-        {                
+        {
             case "overlapping":
-                model = new OverlappingModel(name, xnode.Get("N", 2), xnode.Get("width", 48), xnode.Get("height", 48),
+                model = new OverlappingModel(name, xnode.Get("N", 2), xnode.Get("width", 48 * SCALE_FACTOR), xnode.Get("height", 48 * SCALE_FACTOR),
                     xnode.Get("periodicInput", true), xnode.Get("periodic", false), xnode.Get("symmetry", 8), xnode.Get("ground", 0));
                 break;
             case "simpletiled":
                 model = new SimpleTiledModel(name, xnode.Get<string>("subset"),
-                    xnode.Get("width", 10), xnode.Get("height", 10), xnode.Get("periodic", false), xnode.Get("black", false));
+                    xnode.Get("width", 10 * SCALE_FACTOR), xnode.Get("height", 10 * SCALE_FACTOR), xnode.Get("periodic", false), xnode.Get("black", false));
                 break;
             default:
                 return null;
@@ -359,62 +313,68 @@ internal abstract class WaveFunctionCollapse
 
 internal class SequentialMain : WaveFunctionCollapse
 {
-    public SequentialMain(int numTriesMainLoop, Random random, bool writeImages) : base(numTriesMainLoop, random, writeImages)
+    public SequentialMain(int numTriesMainLoop, Random random, bool writeImages, int s, int seed) : base(numTriesMainLoop, random, writeImages)
     {
         _parallel_propagate = true;
         _parallel_observe = false;
+        SCALE_FACTOR = s;
+        SEED = seed;
     }
 
-    public override void Run(XmlNode xnode, int counter, int screenshotNumber)
+    public override Stopwatch Run(XmlNode xnode, int counter, int screenshotNumber, Stopwatch watch)
     {
-        RunSequential(xnode, counter, screenshotNumber);
+        return RunSequential(xnode, counter, screenshotNumber, watch);
     }
 }
 
 internal class ParallelMain : WaveFunctionCollapse
 {
-    public ParallelMain(int numTriesMainLoop, Random random, bool writeImages, int numWorkers) : base(numTriesMainLoop, random, writeImages)
+    public ParallelMain(int numTriesMainLoop, Random random, bool writeImages, int numWorkers, int s, int seed) : base(numTriesMainLoop, random, writeImages)
     {
         _parallel_propagate = false;
         _parallel_observe = false;
         _numWorkers = numWorkers;
+        SCALE_FACTOR = s;
     }
 
-    public override void Run(XmlNode xnode, int counter, int screenshotNumber)
+    public override Stopwatch Run(XmlNode xnode, int counter, int screenshotNumber, Stopwatch watch)
     {
-        RunParallel(xnode, counter, screenshotNumber);
+        return RunParallel(xnode, counter, screenshotNumber, watch);
     }
 }
 
 internal class ParallelPropagate : WaveFunctionCollapse
 {
-    public ParallelPropagate(int numTriesMainLoop, Random random, bool writeImages, int maxParallel) : base(numTriesMainLoop, random, writeImages)
+    public ParallelPropagate(int numTriesMainLoop, Random random, bool writeImages, int maxParallel, int s, int seed) : base(numTriesMainLoop, random, writeImages)
     {
         _maxParallelism = maxParallel;
         _parallel_propagate = true;
         _parallel_observe = false;
+        SCALE_FACTOR = s;
     }
 
-    public override void Run(XmlNode xnode, int counter, int screenshotNumber)
+    public override Stopwatch Run(XmlNode xnode, int counter, int screenshotNumber, Stopwatch watch)
     {
-        RunSequential(xnode, counter, screenshotNumber);
+        return RunSequential(xnode, counter, screenshotNumber, watch);
     }
 }
 
 internal class ParallelObserve : WaveFunctionCollapse
 {
-    public ParallelObserve(int numTriesMainLoop, Random random, bool writeImages, int maxParallel) : base(numTriesMainLoop, random, writeImages)
+    public ParallelObserve(int numTriesMainLoop, Random random, bool writeImages, int maxParallel, int s, int seed) : base(numTriesMainLoop, random, writeImages)
     {
         _maxParallelism = maxParallel;
         _parallel_propagate = false;
         _parallel_observe = true;
+        SCALE_FACTOR = s;
     }
 
-    public override void Run(XmlNode xnode, int counter, int screenshotNumber)
+    public override Stopwatch Run(XmlNode xnode, int counter, int screenshotNumber, Stopwatch watch)
     {
         throw new NotImplementedException();
     }
 }
+
 
 
 
