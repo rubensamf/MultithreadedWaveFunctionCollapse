@@ -7,6 +7,7 @@ The software is provided "as is", without warranty of any kind, express or impli
 */
 
 using System;
+using System.Diagnostics;
 using System.Drawing;
 
 abstract class Model
@@ -26,6 +27,8 @@ abstract class Model
     internal int maxParallelism = 1;
     internal bool isParallelPropagate = false;
     internal bool isParallelObserve = false;
+
+    internal Stopwatch prop_watch;
 
     protected Model(int width, int height)
 	{
@@ -169,12 +172,13 @@ abstract class Model
             {
                 return (bool)result;
             }
-
+            prop_watch.Start();
             while (Propagate())
             {
                 ;
             }
-        }
+            prop_watch.Stop();		    
+		}
 
 		return true;
 	}

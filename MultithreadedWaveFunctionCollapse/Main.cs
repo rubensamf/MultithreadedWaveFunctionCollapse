@@ -7,9 +7,11 @@ The software is provided "as is", without warranty of any kind, express or impli
 */
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,16 +19,13 @@ using System.Xml;
 
 static class Program
 {
-    private static Random rand;
     private static XmlDocument xdoc;
-    private static int base_seed, num_tries, num_trials, seed;
+    private static int base_seed, num_tries, num_trials, seed, SCALE_FACTOR, num_execution_modes, cur_max_degree_parallelism, cur_num_workers;
     private static bool write_images;
-    private static string[] execution;
-    private static string cur_execution;
-    private static int[] max_degree_parallelism, num_workers, replicate_seeds;
-    private static int cur_max_degree_parallelism, cur_num_workers;
-    private static int SCALE_FACTOR;
-    //private static readonly int NUM_REPLICATE_SEEDS = 10;
+    private static string[] execution_names;
+    private static string cur_execution_name;
+    private static int[] max_degree_parallelism, replicate_seeds, num_workers;
+    private static Random rand;
 
     static void Main(string[] args)
     {
@@ -43,23 +42,36 @@ static class Program
         WaitForEscKey();
     }
 
-    private static TimeSpan[] Execute()
-    {
-        TimeSpan[] runtimes = new TimeSpan[execution.Length];
-        for (int i = 0; i < execution.Length; i++)
+    private static Dictionary<string, WaveFunctions> Execute()
+    {   
+        var executions = new Dictionary<string, WaveFunctions>();
+        for (int i = 0; i < execution_names.Length; i++)
         {
-            cur_execution = execution[i];
+            cur_execution_name = execution_names[i];
             cur_max_degree_parallelism = max_degree_parallelism[i];
             cur_num_workers = num_workers[i];
-            runtimes[i] = Run(System.Diagnostics.Stopwatch.StartNew());
+            AddToRuns(executions, cur_execution_name, Run());
         }
-
-        return runtimes;
+        return executions;
     }
 
-    private static TimeSpan Run(Stopwatch watch)
+    private static void AddToRuns(Dictionary<string, WaveFunctions> executions, string execution_name, WaveFunctionCollapse run)
     {
-        watch.Stop();
+        WaveFunctions runs;
+        if (executions.TryGetValue(execution_name, out runs))
+        {
+            runs.Add(run);
+        }
+        else
+        {
+            runs = new WaveFunctions(run);
+            executions.Add(execution_name, runs);
+        }
+    }
+
+    private static WaveFunctionCollapse Run()
+    {
+        var searches = new List<Search[]>();
         //Run WFC
         int counter = 1;
         foreach (XmlNode xnode in xdoc.FirstChild.ChildNodes)
@@ -72,38 +84,38 @@ static class Program
             var image_name = xnode.Get<string>("name");
             Console.WriteLine($"< {image_name}");
 
-            for (int screenshotNumber = 0; screenshotNumber < xnode.Get("screenshots", 2); screenshotNumber++)
+            int num_Screenshots = xnode.Get("screenshots", 2);
+            Search[] searches_by_screenshot = new Search[num_Screenshots];
+            for (int screenshotNumber = 0; screenshotNumber < num_Screenshots; screenshotNumber++)
             {
-                WFC(xnode, counter, screenshotNumber, watch);
+                searches_by_screenshot[screenshotNumber] = WFC(xnode, counter, screenshotNumber, image_name);                
             }
-
+            searches.Add(searches_by_screenshot);
             counter++;
         }
-        //End WFC
-        //watch.Stop();
-        return watch.Elapsed;
+        return new WaveFunctionCollapse(searches, cur_execution_name);
     }
 
-    private static Stopwatch WFC(XmlNode xnode, int counter, int screenshotNumber, Stopwatch watch)
+    private static Search WFC(XmlNode xnode, int counter, int screenshotNumber, string imageName)
     {
-        WaveFunctionCollapse wfc;
-        switch (cur_execution)
+        Search searcher;
+        switch (cur_execution_name)
         {
             case "parallel-main":
-                wfc = new ParallelMain(num_tries, rand, write_images, cur_num_workers, SCALE_FACTOR, seed);
+                searcher = ParallelSearch.Construct(write_images, num_tries, cur_num_workers, SCALE_FACTOR, seed, cur_max_degree_parallelism, xnode, counter, screenshotNumber, imageName);
                 break;
             case "parallel-propagate":
-                wfc = new ParallelPropagate(num_tries, rand, write_images, cur_max_degree_parallelism, SCALE_FACTOR, seed);
+                searcher = ParallelPropagate.Construct(write_images, num_tries, cur_num_workers, SCALE_FACTOR, seed, cur_max_degree_parallelism, xnode, counter, screenshotNumber, imageName);
                 break;
             case "parallel-observe":
-                wfc = new ParallelObserve(num_tries, rand, write_images, cur_max_degree_parallelism, SCALE_FACTOR, seed);
+                searcher = ParallelObserve.Construct(write_images, num_tries, cur_num_workers, SCALE_FACTOR, seed, cur_max_degree_parallelism, xnode, counter, screenshotNumber, imageName);
                 break;
             default:
-                wfc = new SequentialMain(num_tries, rand, write_images, SCALE_FACTOR, seed);
+                searcher = SequentialSearch.Construct(write_images, num_tries, cur_num_workers, SCALE_FACTOR, seed, cur_max_degree_parallelism, xnode, counter, screenshotNumber, imageName);
                 break;
         }
-
-        return wfc.Run(xnode, counter, screenshotNumber, watch);
+        searcher.Run();
+        return searcher;
     }
 
     private static void InitializeAndLoad(string[] args)
@@ -125,25 +137,22 @@ static class Program
             }
             
 
-            int num_execution_modes = (args.Length - 5) / 3;
+            num_execution_modes = (args.Length - 5) / 3;
 
-            execution = new string[num_execution_modes];
+            execution_names = new string[num_execution_modes];
             max_degree_parallelism = new int[num_execution_modes];
             num_workers = new int[num_execution_modes];
 
             int i = 0;
             for (int j = 5; j < args.Length; j += 3)
             {
-                execution[i] = args[j];
+                execution_names[i] = args[j];
                 max_degree_parallelism[i] = Convert.ToInt32(args[j + 1]);
                 num_workers[i] = Convert.ToInt32(args[j + 2]);
-                ValidExecutionName(execution[i], j);
+                ValidExecutionName(execution_names[i], j);
                 i++;
             }
-
-            rand = new Random(base_seed);
             xdoc = new XmlDocument();
-
             xdoc.Load("samples.xml");
         }
         catch (Exception e)
@@ -152,10 +161,6 @@ static class Program
                 "execution_mode int_max_degree_of_parallelism int_number_of_workers ... " +
                 "(execution_mode int_max_degree_of_parallelism int_number_of_workers)\n");
             Console.WriteLine(e);
-            /*
-            WaitForEscKey();
-            Environment.Exit(exitCode: 24);
-            */
         }
     }
 
@@ -179,21 +184,49 @@ static class Program
         }
     }
 
-    private static string[] DisplayTime(TimeSpan[] execution_times, int run_num)
+    private static string[] DisplayTime(Dictionary<string, WaveFunctions> executions, int run_num)
     {
+        //var search_times = executions.Values;
+        //var prop_times = watches.Values.ToArray();
         Console.WriteLine();
-        ulong total_runtime = 0;
-        string[] lines = new string[execution.Length];
-        int replicate_seed = replicate_seeds[run_num];
-        for (int i = 0; i < execution.Length; i++)
+        ulong total_runtime = 0, total_searchtime = 0, total_proptime = 0;
+        string[] lines = new string[execution_names.Length];
+        int replicateSeed = replicate_seeds[run_num];
+
+        /*
+        for (int i = 0; i < execution_names.Length; i++)
         {
-            Console.WriteLine(execution[i] + " execution time: " + execution_times[i]);
-            lines[i] = run_num + ", " + SCALE_FACTOR + ", " + execution[i] + ", " + base_seed + ", " + replicate_seed + ", " + max_degree_parallelism[i] + ", " +
-                num_workers[i] + ", " + num_tries + ", " + num_trials + ", " + execution_times[i];
-            total_runtime += (ulong) execution_times[i].TotalMilliseconds;
+            Console.WriteLine(execution_names[i] + " execution_names time: " + search_times[0].Elapsed);
+            lines[i] = run_num + ", " + SCALE_FACTOR + ", " + execution_names[i] + ", " + base_seed + ", " + replicate_seed + ", " + max_degree_parallelism[i] + ", " +
+                num_workers[i] + ", " + num_tries + ", " + num_trials + ", " + search_times[0].Elapsed;
+            total_searchtime += (ulong) search_times[0].Elapsed.TotalMilliseconds;
+            total_proptime += (ulong) prop_times[0].Elapsed.TotalMilliseconds;
+        }
+        
+        foreach (var exec in executions)
+        {
+            foreach (var run in exec.Value)
+            {
+                Console.WriteLine(run.Key + " search time: " + run.Value.GetSearchtime() + " prop time: " + run.Value.GetPropagatetime());
+            }
+        }
+        */
+        foreach (var execution in executions)
+        {
+            foreach (var run in execution.Value.waves)
+            {
+                foreach (var search in run.searches)
+                {
+                    int screenshot_num = 0;
+                    foreach (var screenshot in search)
+                    {
+                        Console.WriteLine("Execution: " + execution.Key + " Run: " + run.name + " Screenshot " + screenshot_num + " - " + screenshot.Name + " Search time: " + screenshot.search_time + " Propagation time: " + screenshot.propagation_time);
+                    }
+                }
+            }
         }
 
-        Console.WriteLine("Run #" + run_num + " Runtime: " + total_runtime + " ms\n");
+        //Console.WriteLine("Run #" + run_num + " Proptime: " + total_proptime + " ms Searchtime: " + total_searchtime + " ms Runtime: " + total_runtime + " ms\n");
 
         return lines;
     }
@@ -222,94 +255,60 @@ static class Program
     }
 }
 
-internal abstract class WaveFunctionCollapse
+internal class WaveFunctions
 {
-    protected readonly int _numTriesMainLoop;
-    protected int _numWorkers = 1, _maxParallelism = 1;
-    protected readonly Random _random;
-    protected readonly bool _writeImages;
-    protected bool _parallel_propagate, _parallel_observe;
-    protected int SCALE_FACTOR, SEED;
+    public List<WaveFunctionCollapse> waves { get; set; }
 
-    protected WaveFunctionCollapse(int numTriesMainLoop, Random random, bool writeImages)
+    public WaveFunctions(WaveFunctionCollapse run)
     {
-        _numTriesMainLoop = numTriesMainLoop;
-        _random = random;
-        _writeImages = writeImages;
+        waves = new List<WaveFunctionCollapse>();
+        waves.Add(run);
+    }
+    
+    public void Add(WaveFunctionCollapse run)
+    {
+        waves.Add(run);
+    }
+}
+
+internal class WaveFunctionCollapse
+{
+    public string name;
+    public WaveFunctionCollapse(List<Search[]> searches, string name)
+    {
+        this.searches = searches;
+        this.name = name;
     }
 
-    public abstract Stopwatch Run(XmlNode xnode, int counter, int screenshotNumber, Stopwatch watch);
+    public List<Search[]> searches { get; }
+}
 
-    internal Stopwatch RunSequential(XmlNode xnode, int counter, int screenshotNumber, Stopwatch watch)
+internal abstract class Search
+{
+    public string name;
+    protected int SCALE_FACTOR, _maxParallelism, counter, SEED, screenshotNumber, num_workers, _numSearches;
+    protected bool _parallel_propagate, _parallel_observe, _writeImages;
+    protected XmlNode xnode;
+    public TimeSpan search_time, propagation_time;
+
+    public string Name
     {
-        return Compute(GetModel(xnode), xnode, counter, screenshotNumber, -1, watch);
+        get { return name; }
     }
 
-    internal Stopwatch RunParallel(XmlNode xnode, int counter, int screenshotNumber, Stopwatch watch)
-    {
-        Task[] tasks = new Task[_numWorkers];
-        CancellationTokenSource source = new CancellationTokenSource();
-        CancellationToken token = source.Token;
-
-        for (int i = 0; i < _numWorkers; i++)
-        {
-            int id = i;
-            tasks[i] = Task.Run(
-                () =>
-                {
-                    Model model = GetModel(xnode);
-                    Compute(model, xnode, counter, screenshotNumber, id, watch);
-                    source.Cancel();
-                });
-        }
-
-        Task.WaitAny(tasks);
-        return watch;
-    }
-
-    private Stopwatch Compute(Model model, XmlNode xnode, int counter, int screenshotNumber, int id, Stopwatch watch)
-    {
-        var name = xnode.Get<string>("name");
-        string ID_String = (id < 0) ? ("") : (" WITH " + id);
-        for (int k = 0; k < _numTriesMainLoop; k++)
-        {
-            Console.Write(">");            
-            watch.Restart();
-            bool finished = model.Run(SEED, xnode.Get("limit", 0));
-            watch.Stop();
-            if (finished)
-            {
-                Console.WriteLine("DONE" + ID_String);
-
-                if (_writeImages)
-                {
-                    model.Graphics().Save($"{counter} {name} {screenshotNumber}.png");
-                    if (model is SimpleTiledModel && xnode.Get("textOutput", false))
-                    {
-                        File.WriteAllText($"{counter} {name} {screenshotNumber}.txt", (model as SimpleTiledModel).TextOutput());
-                    }
-                }
-                break;
-            }
-
-            Console.WriteLine("CONTRADICTION" + ID_String);
-        }
-
-        return watch;
-    }
+    public abstract void Run();
 
     private Model GetModel(XmlNode xnode)
     {
         Model model;
-        string name = xnode.Get<string>("name");
         switch (xnode.Name)
         {
             case "overlapping":
-                model = new OverlappingModel(name, xnode.Get("N", 2), xnode.Get("width", 48 * SCALE_FACTOR), xnode.Get("height", 48 * SCALE_FACTOR),
+                model = new OverlappingModel(Name, xnode.Get("N", 2), xnode.Get("width", 48 * SCALE_FACTOR), xnode.Get("height", 48 * SCALE_FACTOR),
                     xnode.Get("periodicInput", true), xnode.Get("periodic", false), xnode.Get("symmetry", 8), xnode.Get("ground", 0));
                 break;
             case "simpletiled":
-                model = new SimpleTiledModel(name, xnode.Get<string>("subset"),
+                model = new SimpleTiledModel(Name, xnode.Get<string>("subset"),
                     xnode.Get("width", 10 * SCALE_FACTOR), xnode.Get("height", 10 * SCALE_FACTOR), xnode.Get("periodic", false), xnode.Get("black", false));
                 break;
             default:
@@ -319,72 +318,188 @@ internal abstract class WaveFunctionCollapse
         model.isParallelPropagate = _parallel_propagate;
         model.isParallelObserve = _parallel_observe;
         model.maxParallelism = _maxParallelism;
+        model.prop_watch = new Stopwatch();
 
         return model;
     }
+    
+    internal void RunSequential(bool parallel_propagate, bool parallel_observe)
+    {
+        Stopwatch search_watch, prop_watch;
+        Compute(GetModel(xnode), -1, out search_watch, out prop_watch);
+        search_time = search_watch.Elapsed;
+        propagation_time = prop_watch.Elapsed;
+    }  
+
+    internal void RunParallel(bool parallel_propagate, bool parallel_observe)
+    {        
+        Task[] tasks = new Task[num_workers];
+        CancellationTokenSource source = new CancellationTokenSource();
+        CancellationToken token = source.Token;
+        // create varz to accumulate propagate and search timez       
+        TimeSpan search = TimeSpan.Zero, propagate = TimeSpan.Zero;
+        for (int i = 0; i < num_workers; i++)
+        {
+            int id = i;
+            tasks[i] = Task.Run(
+                () =>
+                {
+                    Model model = GetModel(xnode);
+                    // Create Ztopwatchez for zearch and for propagate here                   
+                    Stopwatch search_watch, prop_watch;
+                    // pazz thoze to compute
+                    Compute(model, id, out search_watch, out prop_watch); // create a new watch for each task
+                    source.Cancel();
+
+                    // add the time for each 'watch to the accumulatorz
+                    search += search_watch.Elapsed;
+                    propagate += prop_watch.Elapsed;
+                });
+        }
+        Task.WaitAny(tasks);
+        search_time = search;
+        propagation_time = propagate;
+    }
+
+    /**
+     * Accumulates all search and propagation times
+     */
+    private void Compute(Model model, int id, out Stopwatch search_time, out Stopwatch propagate_time)
+    {
+        Stopwatch search_watch = new Stopwatch();
+        string ID_String = (id < 0) ? ("") : (" WITH " + id);
+        for (int k = 0; k < _numSearches; k++)
+        {
+            Console.Write(">");            
+            search_watch.Start();
+            bool finished = model.Run(SEED, xnode.Get("limit", 0));
+            search_watch.Stop();
+            if (finished)
+            {
+                Console.WriteLine("DONE" + ID_String);
+
+                if (_writeImages)
+                {
+                    model.Graphics().Save($"{counter} {Name} {screenshotNumber}.png");
+                    if (model is SimpleTiledModel && xnode.Get("textOutput", false))
+                    {
+                        File.WriteAllText($"{counter} {Name} {screenshotNumber}.txt", (model as SimpleTiledModel).TextOutput());
+                    }
+                }
+                break;
+            }
+            Console.WriteLine("CONTRADICTION" + ID_String);
+            //model.prop_watch.Reset();
+        }
+
+        search_time = search_watch;
+        propagate_time = model.prop_watch;
+    }    
 }
 
-internal class SequentialMain : WaveFunctionCollapse
+internal class SequentialSearch : Search
 {
-    public SequentialMain(int numTriesMainLoop, Random random, bool writeImages, int s, int seed) : base(numTriesMainLoop, random, writeImages)
+    private SequentialSearch(bool writeImages, int numTries, int numWorkers, int scaleFactor, int seed, int maxDegreeParallelism, XmlNode xmlNode, int ct, int screenshotNum)
     {
-        _parallel_propagate = true;
-        _parallel_observe = false;
-        SCALE_FACTOR = s;
+        _writeImages = writeImages;
+        _numSearches = numTries;
+        num_workers = numWorkers;
+        SCALE_FACTOR = scaleFactor;
         SEED = seed;
+        _maxParallelism = maxDegreeParallelism;
+        xnode = xmlNode;
+        counter = ct;
+        screenshotNumber = screenshotNum;
     }
 
-    public override Stopwatch Run(XmlNode xnode, int counter, int screenshotNumber, Stopwatch watch)
+    public override void Run()
     {
-        return RunSequential(xnode, counter, screenshotNumber, watch);
+        RunSequential(false, false);
+    }
+
+    public static Search Construct(bool writeImages, int numTries, int numWorkers, int scaleFactor, int seed, int maxDegreeParallelism, XmlNode xmlNode, int counter, int screenshotNumber, string imageName)
+    {
+        var s = new SequentialSearch(writeImages, numTries, numWorkers, scaleFactor, seed, maxDegreeParallelism, xmlNode, counter, screenshotNumber);
+        s.name = imageName;
+        return s;
     }
 }
 
-internal class ParallelMain : WaveFunctionCollapse
+internal class ParallelSearch : Search
 {
-    public ParallelMain(int numTriesMainLoop, Random random, bool writeImages, int numWorkers, int s, int seed) : base(numTriesMainLoop, random, writeImages)
+    public ParallelSearch(bool writeImages, int numTries, int numWorkers, int scaleFactor, int seed, int maxDegreeParallelism, XmlNode xmlNode, int iD, int screenshotNum)
     {
-        _parallel_propagate = false;
-        _parallel_observe = false;
-        _numWorkers = numWorkers;
-        SCALE_FACTOR = s;
+        SCALE_FACTOR = scaleFactor;
+        _maxParallelism = maxDegreeParallelism;
+        SEED = seed;
+        screenshotNumber = screenshotNum;
+        num_workers = numWorkers;
+        _numSearches = numTries;
+        _writeImages = writeImages;
+        xnode = xmlNode;
     }
 
-    public override Stopwatch Run(XmlNode xnode, int counter, int screenshotNumber, Stopwatch watch)
+    public override void Run()
     {
-        return RunParallel(xnode, counter, screenshotNumber, watch);
+        RunParallel(false, false);
+    }
+
+    public static Search Construct(bool writeImages, int numTries, int numWorkers, int scaleFactor, int seed, int maxDegreeParallelism, XmlNode xmlNode, int ID, int screenshotNumber, string imageName)
+    {
+        var ps = new ParallelSearch(writeImages, numTries,  numWorkers,  scaleFactor,  seed,  maxDegreeParallelism, xmlNode, ID,  screenshotNumber);
+        ps.name = imageName;
+        return ps;
     }
 }
 
-internal class ParallelPropagate : WaveFunctionCollapse
+internal class ParallelPropagate : Search
 {
-    public ParallelPropagate(int numTriesMainLoop, Random random, bool writeImages, int maxParallel, int s, int seed) : base(numTriesMainLoop, random, writeImages)
+    private ParallelPropagate(bool writeImages, int numTries, int numWorkers, int scaleFactor, int seed, int maxDegreeParallelism, XmlNode xmlNode, int iD, int screenshotNum)
     {
-        _maxParallelism = maxParallel;
-        _parallel_propagate = true;
-        _parallel_observe = false;
-        SCALE_FACTOR = s;
+        SCALE_FACTOR = scaleFactor;
+        _maxParallelism = maxDegreeParallelism;
+        SEED = seed;
+        screenshotNumber = screenshotNum;
+        num_workers = numWorkers;
+        _numSearches = numTries;
+        _writeImages = writeImages;
+        xnode = xmlNode;
     }
 
-    public override Stopwatch Run(XmlNode xnode, int counter, int screenshotNumber, Stopwatch watch)
+    public override void Run()
     {
-        return RunSequential(xnode, counter, screenshotNumber, watch);
+        RunSequential(true, false);
+    }
+
+    public static Search Construct(bool writeImages, int numTries, int numWorkers, int scaleFactor, int seed, int maxDegreeParallelism, XmlNode xmlNode, int ID, int screenshotNumber, string imageName)
+    {
+
+        var pp = new ParallelPropagate(writeImages, numTries, numWorkers, scaleFactor, seed, maxDegreeParallelism, xmlNode, ID, screenshotNumber);
+        pp.name = imageName;
+        return pp;
     }
 }
 
-internal class ParallelObserve : WaveFunctionCollapse
+internal class ParallelObserve : Search
 {
-    public ParallelObserve(int numTriesMainLoop, Random random, bool writeImages, int maxParallel, int s, int seed) : base(numTriesMainLoop, random, writeImages)
-    {
-        _maxParallelism = maxParallel;
-        _parallel_propagate = false;
-        _parallel_observe = true;
-        SCALE_FACTOR = s;
-    }
-
-    public override Stopwatch Run(XmlNode xnode, int counter, int screenshotNumber, Stopwatch watch)
+    private ParallelObserve(bool writeImages, int numTries, int numWorkers, int scaleFactor, int seed, int maxDegreeParallelism, XmlNode xmlNode, int iD, int screenshotNum)
     {
         throw new NotImplementedException();
+    }
+
+    public override void Run()
+    {
+        throw new NotImplementedException();
+/*
+        RunSequential(false, true);
+*/
+    }
+
+    public static Search Construct(bool writeImages, int numTries, int numWorkers, int scaleFactor, int seed, int maxDegreeParallelism, XmlNode xmlNode, int ID, int screenshotNumber, string imageName)
+    {
+        var po = new ParallelObserve(writeImages, numTries, numWorkers, scaleFactor, seed, maxDegreeParallelism, xmlNode, ID, screenshotNumber);
+        po.name = imageName;
+        return po;
     }
 }
 
