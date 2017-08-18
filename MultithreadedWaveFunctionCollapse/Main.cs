@@ -26,9 +26,12 @@ static class Program
     private static string cur_execution_name;
     private static int[] max_degree_parallelism, replicate_seeds, num_workers;
     private static Random rand;
+    private static Stopwatch overall_runtime;
+    private static List<string> main_results_table;
 
     static void Main(string[] args)
     {
+        overall_runtime = Stopwatch.StartNew();
         // Command line arguments: bool_write_images int_seed int_number_of_trials int_number_of_tries scale_factor [execution_mode int_max_degree_of_parallelism int_number_of_workers] ...
         InitializeAndLoad(args);
         List<string[]> runtimes = new List<string[]>(num_trials);
@@ -37,10 +40,13 @@ static class Program
             seed = replicate_seeds[i];
             runtimes.Add(DisplayTime(Execute(), i));
         }
-
+        overall_runtime.Stop();
         WriteRuntimes(runtimes);
+        //WriteMainResultTable();
         WaitForEscKey();
     }
+
+    
 
     private static Dictionary<string, WaveFunctions> Execute()
     {   
@@ -71,6 +77,7 @@ static class Program
 
     private static WaveFunctionCollapse Run()
     {
+        Stopwatch wfc_timer = Stopwatch.StartNew();
         var searches = new List<Search[]>();
         //Run WFC
         int counter = 1;
@@ -93,7 +100,10 @@ static class Program
             searches.Add(searches_by_screenshot);
             counter++;
         }
-        return new WaveFunctionCollapse(searches, cur_execution_name);
+
+        wfc_timer.Stop();
+        var wfc = new WaveFunctionCollapse(searches, cur_execution_name, wfc_timer);
+        return wfc;
     }
 
     private static Search WFC(XmlNode xnode, int counter, int screenshotNumber, string imageName)
@@ -114,12 +124,17 @@ static class Program
                 searcher = SequentialSearch.Construct(write_images, num_tries, cur_num_workers, SCALE_FACTOR, seed, cur_max_degree_parallelism, xnode, counter, screenshotNumber, imageName);
                 break;
         }
+        searcher.total_runtime_timer = Stopwatch.StartNew();
         searcher.Run();
+        searcher.total_runtime_timer.Stop();
         return searcher;
     }
 
     private static void InitializeAndLoad(string[] args)
     {
+        main_results_table = new List<string>();
+        main_results_table.Add(" , , Wall-clock time to result, , Time in propagation phase\n" +
+                               "Strategy, Degree of Parallelism, Mean, Stdev, Mean, Stdev\n");
         try
         {
             write_images = Convert.ToBoolean(args[0]);
@@ -186,54 +201,55 @@ static class Program
 
     private static string[] DisplayTime(Dictionary<string, WaveFunctions> executions, int run_num)
     {
-        //var search_times = executions.Values;
-        //var prop_times = watches.Values.ToArray();
         Console.WriteLine();
-        ulong total_runtime = 0, total_searchtime = 0, total_proptime = 0;
-        string[] lines = new string[execution_names.Length];
+        ulong total_runtime = 0, total_searchtime = 0, total_proptime = 0;        
+        var lines = new List<string>(execution_names.Length);
         int replicateSeed = replicate_seeds[run_num];
 
-        /*
-        for (int i = 0; i < execution_names.Length; i++)
-        {
-            Console.WriteLine(execution_names[i] + " execution_names time: " + search_times[0].Elapsed);
-            lines[i] = run_num + ", " + SCALE_FACTOR + ", " + execution_names[i] + ", " + base_seed + ", " + replicate_seed + ", " + max_degree_parallelism[i] + ", " +
-                num_workers[i] + ", " + num_tries + ", " + num_trials + ", " + search_times[0].Elapsed;
-            total_searchtime += (ulong) search_times[0].Elapsed.TotalMilliseconds;
-            total_proptime += (ulong) prop_times[0].Elapsed.TotalMilliseconds;
-        }
-        
-        foreach (var exec in executions)
-        {
-            foreach (var run in exec.Value)
-            {
-                Console.WriteLine(run.Key + " search time: " + run.Value.GetSearchtime() + " prop time: " + run.Value.GetPropagatetime());
-            }
-        }
-        */
         foreach (var execution in executions)
         {
+            Console.WriteLine();
+            Console.WriteLine("Execution: " + execution.Key);
+            Console.WriteLine();
             foreach (var run in execution.Value.waves)
             {
+                bool flag = true;
+                Console.Write("Run: " + run.name);
                 foreach (var search in run.searches)
-                {
+                {                    
                     int screenshot_num = 0;
+                    string img_name = "";                    
                     foreach (var screenshot in search)
                     {
-                        Console.WriteLine("Execution: " + execution.Key + " Run: " + run.name + " Screenshot " + screenshot_num + " - " + screenshot.Name + " Search time: " + screenshot.search_time + " Propagation time: " + screenshot.propagation_time);
+                        if (flag)
+                        {
+                            Console.WriteLine(" " + screenshot._maxParallelism + " " + screenshot.num_workers + "\tRuntime: " + run.timer.Elapsed);
+                            flag = false;
+                        }
+                        if(img_name != screenshot.Name)
+                            Console.WriteLine("\n" + screenshot.Name);
+                        Console.WriteLine("\tScreenshot " + screenshot_num + " Search time: " + screenshot.search_time + " Propagation time: " + screenshot.propagation_time + " Total Runtime: " + screenshot.total_runtime_timer.Elapsed);
+                        lines.Add(run_num + ", " + run.name + ", " + screenshot.name + ", " + SCALE_FACTOR + ", " + base_seed + ", " + replicateSeed + ", " + screenshot._maxParallelism + ", " +
+                            screenshot.num_workers + ", " + num_tries + ", " + num_trials + ", " + screenshot_num + ", " + screenshot.propagation_time + ", " + screenshot.search_time);
+                        total_searchtime += (ulong) screenshot.search_time.TotalMilliseconds;
+                        total_proptime += (ulong) screenshot.propagation_time.TotalMilliseconds;
+                        screenshot_num++;
+                        img_name = screenshot.Name;
                     }
                 }
             }
         }
 
-        //Console.WriteLine("Run #" + run_num + " Proptime: " + total_proptime + " ms Searchtime: " + total_searchtime + " ms Runtime: " + total_runtime + " ms\n");
+        Console.WriteLine();
+        Console.WriteLine("Run #" + run_num + " Proptime: " + total_proptime + " ms Searchtime: " + total_searchtime + " ms");
 
-        return lines;
+        return lines.ToArray();
     }
 
     private static void WriteRuntimes(List<string[]> runs)
     {
-        StringBuilder sb = new StringBuilder("Run Number, Scale Factor, Execution Name, Base Seed, Replicate Seed, Max Degree of Parallelism, Number of Workers, Number of Tries, Number of Trials, Runtime (ms)\n");
+        Console.WriteLine("\nOverall Runtime: " + overall_runtime.Elapsed);
+        StringBuilder sb = new StringBuilder("Run Number, Run Name, Image Name, Scale Factor, Base Seed, Replicate Seed, Max Degree of Parallelism, Number of Workers, Number of Tries, Number of Trials, Screenshot Number, Propagate Time, Search Time\n");
 
         foreach (var runtimes in runs)
         {
@@ -246,7 +262,12 @@ static class Program
         string path = Directory.GetCurrentDirectory() + "\\" + "MultithreadedWaveFunctionCollapseResults.csv";
         System.IO.File.WriteAllText(path, sb.ToString());
     }
-   
+
+    private static void WriteMainResultTable()
+    {
+        throw new NotImplementedException();
+    }
+
     private static void WaitForEscKey()
     {
         Console.WriteLine("\nPress ESC to stop");
@@ -258,6 +279,7 @@ static class Program
 internal class WaveFunctions
 {
     public List<WaveFunctionCollapse> waves { get; set; }
+    public Stopwatch timer;
 
     public WaveFunctions(WaveFunctionCollapse run)
     {
@@ -274,22 +296,25 @@ internal class WaveFunctions
 internal class WaveFunctionCollapse
 {
     public string name;
-    public WaveFunctionCollapse(List<Search[]> searches, string name)
+    public Stopwatch timer;
+    public List<Search[]> searches;
+
+    public WaveFunctionCollapse(List<Search[]> searches, string name, Stopwatch timer)
     {
         this.searches = searches;
         this.name = name;
-    }
-
-    public List<Search[]> searches { get; }
+        this.timer = timer;
+    }    
 }
 
 internal abstract class Search
 {
     public string name;
-    protected int SCALE_FACTOR, _maxParallelism, counter, SEED, screenshotNumber, num_workers, _numSearches;
-    protected bool _parallel_propagate, _parallel_observe, _writeImages;
-    protected XmlNode xnode;
+    public int SCALE_FACTOR, _maxParallelism, counter, SEED, screenshotNumber, num_workers, _numSearches;
+    public bool _parallel_propagate, _parallel_observe, _writeImages;
+    public XmlNode xnode;
     public TimeSpan search_time, propagation_time;
+    public Stopwatch total_runtime_timer;
 
     public string Name
     {
