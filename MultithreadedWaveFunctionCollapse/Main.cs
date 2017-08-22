@@ -29,6 +29,7 @@ static class Program
     private static Stopwatch overall_runtime;
     private static List<string> main_results_table;
     private static Results _results;
+    private static int NUM_SCREENSHOTS=1;
 
     static void Main(string[] args)
     {
@@ -97,7 +98,7 @@ static class Program
             var image_name = xnode.Get<string>("name");
             Console.WriteLine($"< {image_name}");
 
-            int num_Screenshots = xnode.Get("screenshots", 2);
+            int num_Screenshots = xnode.Get("screenshots", NUM_SCREENSHOTS);
             Search[] searches_by_screenshot = new Search[num_Screenshots];
             Stopwatch searches_timer = Stopwatch.StartNew();
             for (int screenshotNumber = 0; screenshotNumber < num_Screenshots; screenshotNumber++)
@@ -267,8 +268,8 @@ static class Program
 
     private static void WriteMainResultTable()
     {
-        StringBuilder sb = new StringBuilder(" , , Wall-clock time to result, , Time in propagation phase\n" +
-                                             "Strategy, Degree of Parallelism, Mean (ms), Stdev (ms), Mean (ms), Stdev (ms)\n");
+        StringBuilder sb = new StringBuilder(" , ,Wall-clock time to result, , Time in search, , Time in propagation phase\n" +
+                                             "Strategy, Degree of Parallelism, Mean (ms), Stdev (ms), Mean (ms), Stdev (ms), Mean (ms), Stdev (ms)\n");
         foreach (var result in _results.Get())
         {
             var r = result.Value;
@@ -278,7 +279,7 @@ static class Program
             int max_parallel = Convert.ToInt32(split[1]);
             int n_workers = Convert.ToInt32(split[2]);
             var degree_parallelism = max_parallel > n_workers ? max_parallel : n_workers;
-            sb.Append(name + ", " + degree_parallelism + ", " + r.GetMeanWallClockTime() + ", " + r.GetStandardDeviationWallClockTime() + ", " + r.GetMeanPropTime() + ", " + r.GetStandardDeviationPropTime() + "\n");           
+            sb.Append(name + ", " + degree_parallelism + ", " + r.GetMeanWallClockTime() + ", " + r.GetStandardDeviationWallClockTime() + ", " + r.GetMeanSearchTime() + ", " + r.GetStandardDeviationSearchTime() + ", " + r.GetMeanPropTime() + ", " + r.GetStandardDeviationPropTime() + "\n");           
         }
 
         string path = Directory.GetCurrentDirectory() + "\\" + "MultithreadedWaveFunctionCollapseSummary.csv";
@@ -323,23 +324,29 @@ internal class Results
 internal class Result
 {
     private Dictionary<int, List<WaveFunctionCollapse>> waves;
-    private List<double> wall_clock_times, prop_times;
+    private List<double> wall_clock_times, prop_times, search_times;
 
-    private double mean_wall_clock_time, stdev_wall_clock_time, mean_prop_time, stdev_prop_time;
-    private TimeSpan total_wall_clock_time, total_prop_time;
+    private double mean_wall_clock_time, stdev_wall_clock_time, mean_prop_time, stdev_prop_time, mean_search_time, stdev_search_time;
+    private TimeSpan total_wall_clock_time, total_prop_time, total_search_time;
     private int count;
+
+   
 
     public Result()
     {
         waves = new Dictionary<int, List<WaveFunctionCollapse>>();
         wall_clock_times = null;
         prop_times = null;
+        search_times = null;
         mean_wall_clock_time = -1;
         stdev_wall_clock_time = -1;
         mean_prop_time = -1;
         stdev_prop_time = -1;
+        mean_search_time = -1;
+        stdev_search_time = -1;
         total_wall_clock_time = TimeSpan.Zero;
         total_prop_time = TimeSpan.Zero;
+        total_search_time = TimeSpan.Zero;
         count = -1;
     }
 
@@ -374,7 +381,7 @@ internal class Result
 
     public TimeSpan GetTotalWallClockTime()
     {
-        if (total_wall_clock_time == null)
+        if (total_wall_clock_time == TimeSpan.Zero)
         {
             ComputeTotalWallClockTime();
         }
@@ -384,14 +391,27 @@ internal class Result
 
     public TimeSpan GetTotalPropTime()
     {
-        if (total_prop_time == null)
+        if (total_prop_time == TimeSpan.Zero)
         {
             ComputePropTime();
         }
 
         return total_prop_time;
     }
+
+    public TimeSpan GetTotalSearchTime()
+    {
+        if (total_search_time == TimeSpan.Zero)
+        {
+            ComputeSearchTime();
+        }
+        return total_search_time;
+    }
+
+   
+
     
+
     public double GetMeanWallClockTime()
     {
         if (mean_wall_clock_time < 0)
@@ -410,7 +430,20 @@ internal class Result
         }
 
         return mean_prop_time;
-    } 
+    }
+
+    public double GetMeanSearchTime()
+    {
+        if (mean_search_time < 0)
+        {
+            ComputeMeanSearchTime();
+        }
+        return mean_search_time;
+    }
+
+    
+
+   
 
     public double GetStandardDeviationWallClockTime()
     {
@@ -429,6 +462,19 @@ internal class Result
         }
         return stdev_prop_time;
     }
+
+    public double GetStandardDeviationSearchTime()
+    {
+        if (stdev_search_time < 0)
+        {
+            ComputeStdDevSearchTime();
+        }
+        return stdev_search_time;
+    }
+
+    
+
+    
 
     private List<double> GetWallClockTimes()
     {
@@ -490,6 +536,36 @@ internal class Result
         }
     }
 
+    public List<double> GetSearchTimes()
+    {
+        if (search_times == null)
+        {
+            FindSearchTimes();
+        }
+        return search_times;
+    }
+
+    private void FindSearchTimes()
+    {
+        if (search_times == null)
+        {
+            search_times = new List<double>();
+        }
+        foreach (var waveList in waves.Values)
+        {
+            foreach (var wave in waveList)
+            {
+                foreach (var search in wave.searches)
+                {
+                    foreach (var screenshot in search.screenshots)
+                    {
+                        search_times.Add(screenshot.search_time.TotalMilliseconds);
+                    }
+                }
+            }
+        }
+    }
+
     private void ComputeCount()
     {
         count = 0;
@@ -525,6 +601,23 @@ internal class Result
         }
     }
 
+    private void ComputeSearchTime()
+    {
+        foreach (var waveList in waves.Values)
+        {
+            foreach (var wave in waveList)
+            {
+                foreach (var waveSearch in wave.searches)
+                {
+                    foreach (var waveSearchScreenshot in waveSearch.screenshots)
+                    {
+                        total_search_time += waveSearchScreenshot.search_time;
+                    }
+                }
+            }
+        }
+    }
+
     private void ComputePropTime()
     {
         foreach (var waveList in waves.Values)
@@ -547,6 +640,11 @@ internal class Result
         mean_wall_clock_time = GetTotalWallClockTime().TotalMilliseconds / GetCount();
     }
 
+    private void ComputeMeanSearchTime()
+    {
+        mean_search_time = GetTotalSearchTime().TotalMilliseconds / GetCount();
+    }
+
     private void ComputeMeanPropTime()
     {
         mean_prop_time = GetTotalPropTime().TotalMilliseconds / GetCount();
@@ -561,7 +659,12 @@ internal class Result
     {
         stdev_prop_time = ComputeStdDev(GetPropTimes());
     }
-    
+
+    private void ComputeStdDevSearchTime()
+    {
+        stdev_search_time = ComputeStdDev(GetSearchTimes());
+    }
+
     //Adapted from Calculate Standard Deviation of Double Variables in C# by Victor Chen
     private double ComputeStdDev(List<double> collection)
     {
@@ -667,7 +770,7 @@ internal abstract class Search
     internal void RunSequential(bool parallel_propagate, bool parallel_observe)
     {
         Stopwatch search_watch, prop_watch;
-        Compute(GetModel(xnode), -1, out search_watch, out prop_watch);
+        Compute(GetModel(xnode), 0, out search_watch, out prop_watch);
         search_time = search_watch.Elapsed;
         propagation_time = prop_watch.Elapsed;
     }  
@@ -713,7 +816,7 @@ internal abstract class Search
         {
             Console.Write(">");            
             search_watch.Start();
-            bool finished = model.Run(SEED, xnode.Get("limit", 0));
+            bool finished = model.Run(SEED+id, xnode.Get("limit", 0));
             search_watch.Stop();
             if (finished)
             {
