@@ -28,40 +28,46 @@ static class Program
     private static Random rand;
     private static Stopwatch overall_runtime;
     private static List<string> main_results_table;
+    private static Results _results;
 
     static void Main(string[] args)
     {
         overall_runtime = Stopwatch.StartNew();
+        
         // Command line arguments: bool_write_images int_seed int_number_of_trials int_number_of_tries scale_factor [execution_mode int_max_degree_of_parallelism int_number_of_workers] ...
         InitializeAndLoad(args);
         List<string[]> runtimes = new List<string[]>(num_trials);
         for (int i = 0; i < num_trials; i++)
         {
             seed = replicate_seeds[i];
-            runtimes.Add(DisplayTime(Execute(), i));
+            var trial = Execute();
+            runtimes.Add(DisplayTime(trial, i));
+
         }
         overall_runtime.Stop();
         WriteRuntimes(runtimes);
-        //WriteMainResultTable();
+        WriteMainResultTable();
         WaitForEscKey();
     }
 
-    
-
     private static Dictionary<string, WaveFunctions> Execute()
-    {   
+    {
         var executions = new Dictionary<string, WaveFunctions>();
         for (int i = 0; i < execution_names.Length; i++)
         {
             cur_execution_name = execution_names[i];
             cur_max_degree_parallelism = max_degree_parallelism[i];
             cur_num_workers = num_workers[i];
-            AddToRuns(executions, cur_execution_name, Run());
+            string name = cur_execution_name + " " + cur_max_degree_parallelism + " " + cur_num_workers;
+            var run = Run();
+            _results.Add(seed, name, run);
+            AddToExecutions(executions, name, run);
         }
+
         return executions;
     }
 
-    private static void AddToRuns(Dictionary<string, WaveFunctions> executions, string execution_name, WaveFunctionCollapse run)
+    private static void AddToExecutions(Dictionary<string, WaveFunctions> executions, string execution_name, WaveFunctionCollapse run)
     {
         WaveFunctions runs;
         if (executions.TryGetValue(execution_name, out runs))
@@ -74,11 +80,11 @@ static class Program
             executions.Add(execution_name, runs);
         }
     }
-
+   
     private static WaveFunctionCollapse Run()
     {
         Stopwatch wfc_timer = Stopwatch.StartNew();
-        var searches = new List<Search[]>();
+        var searches = new List<Searches>();
         //Run WFC
         int counter = 1;
         foreach (XmlNode xnode in xdoc.FirstChild.ChildNodes)
@@ -93,11 +99,13 @@ static class Program
 
             int num_Screenshots = xnode.Get("screenshots", 2);
             Search[] searches_by_screenshot = new Search[num_Screenshots];
+            Stopwatch searches_timer = Stopwatch.StartNew();
             for (int screenshotNumber = 0; screenshotNumber < num_Screenshots; screenshotNumber++)
             {
                 searches_by_screenshot[screenshotNumber] = WFC(xnode, counter, screenshotNumber, image_name);                
             }
-            searches.Add(searches_by_screenshot);
+            searches_timer.Stop();
+            searches.Add(new Searches(searches_by_screenshot, image_name, searches_timer));
             counter++;
         }
 
@@ -132,6 +140,7 @@ static class Program
 
     private static void InitializeAndLoad(string[] args)
     {
+        _results = new Results();
         main_results_table = new List<string>();
         main_results_table.Add(" , , Wall-clock time to result, , Time in propagation phase\n" +
                                "Strategy, Degree of Parallelism, Mean, Stdev, Mean, Stdev\n");
@@ -209,26 +218,19 @@ static class Program
         foreach (var execution in executions)
         {
             Console.WriteLine();
-            Console.WriteLine("Execution: " + execution.Key);
+            Console.WriteLine("Strategy: " + execution.Key);
             Console.WriteLine();
             foreach (var run in execution.Value.waves)
             {
-                bool flag = true;
-                Console.Write("Run: " + run.name);
                 foreach (var search in run.searches)
                 {                    
                     int screenshot_num = 0;
                     string img_name = "";                    
-                    foreach (var screenshot in search)
+                    foreach (var screenshot in search.screenshots)
                     {
-                        if (flag)
-                        {
-                            Console.WriteLine(" " + screenshot._maxParallelism + " " + screenshot.num_workers + "\tRuntime: " + run.timer.Elapsed);
-                            flag = false;
-                        }
                         if(img_name != screenshot.Name)
                             Console.WriteLine("\n" + screenshot.Name);
-                        Console.WriteLine("\tScreenshot " + screenshot_num + " Search time: " + screenshot.search_time + " Propagation time: " + screenshot.propagation_time + " Total Runtime: " + screenshot.total_runtime_timer.Elapsed);
+                        Console.WriteLine("\tScreenshot " + screenshot_num + " Search time: " + screenshot.search_time + " Propagation time: " + screenshot.propagation_time);
                         lines.Add(run_num + ", " + run.name + ", " + screenshot.name + ", " + SCALE_FACTOR + ", " + base_seed + ", " + replicateSeed + ", " + screenshot._maxParallelism + ", " +
                             screenshot.num_workers + ", " + num_tries + ", " + num_trials + ", " + screenshot_num + ", " + screenshot.propagation_time + ", " + screenshot.search_time);
                         total_searchtime += (ulong) screenshot.search_time.TotalMilliseconds;
@@ -265,7 +267,22 @@ static class Program
 
     private static void WriteMainResultTable()
     {
-        throw new NotImplementedException();
+        StringBuilder sb = new StringBuilder(" , , Wall-clock time to result, , Time in propagation phase\n" +
+                                             "Strategy, Degree of Parallelism, Mean (ms), Stdev (ms), Mean (ms), Stdev (ms)\n");
+        foreach (var result in _results.Get())
+        {
+            var r = result.Value;
+            var seperator = new[] {' '};
+            var split = result.Key.Split(seperator);
+            string name = split[0];
+            int max_parallel = Convert.ToInt32(split[1]);
+            int n_workers = Convert.ToInt32(split[2]);
+            var degree_parallelism = max_parallel > n_workers ? max_parallel : n_workers;
+            sb.Append(name + ", " + degree_parallelism + ", " + r.GetMeanWallClockTime() + ", " + r.GetStandardDeviationWallClockTime() + ", " + r.GetMeanPropTime() + ", " + r.GetStandardDeviationPropTime() + "\n");           
+        }
+
+        string path = Directory.GetCurrentDirectory() + "\\" + "MultithreadedWaveFunctionCollapseSummary.csv";
+        System.IO.File.WriteAllText(path, sb.ToString());
     }
 
     private static void WaitForEscKey()
@@ -273,6 +290,291 @@ static class Program
         Console.WriteLine("\nPress ESC to stop");
         do { }
         while (Console.ReadKey(true).Key != ConsoleKey.Escape);
+    }
+}
+
+internal class Results
+{
+    private Dictionary<string, Result> results;
+
+    public Results()
+    {
+        results = new Dictionary<string, Result>();
+    }
+
+    public void Add(int seed, string name, WaveFunctionCollapse run)
+    {
+        Result r;
+        if (!results.TryGetValue(name, out r))
+        {
+            r = new Result();
+            r.Add(seed, run);
+            results.Add(name, r);
+        }
+        r.Add(seed, run);
+    }
+
+    public Dictionary<string, Result> Get()
+    {
+        return results;
+    }
+}
+
+internal class Result
+{
+    private Dictionary<int, List<WaveFunctionCollapse>> waves;
+    private List<double> wall_clock_times, prop_times;
+
+    private double mean_wall_clock_time, stdev_wall_clock_time, mean_prop_time, stdev_prop_time;
+    private TimeSpan total_wall_clock_time, total_prop_time;
+    private int count;
+
+    public Result()
+    {
+        waves = new Dictionary<int, List<WaveFunctionCollapse>>();
+        wall_clock_times = null;
+        prop_times = null;
+        mean_wall_clock_time = -1;
+        stdev_wall_clock_time = -1;
+        mean_prop_time = -1;
+        stdev_prop_time = -1;
+        total_wall_clock_time = TimeSpan.Zero;
+        total_prop_time = TimeSpan.Zero;
+        count = -1;
+    }
+
+    public void Add(int key, WaveFunctionCollapse val)
+    {
+        List<WaveFunctionCollapse> l;
+        if (waves.TryGetValue(key, out l))
+        {
+            l.Add(val);
+        }
+        else
+        {
+            l = new List<WaveFunctionCollapse>();
+            l.Add(val);
+            waves.Add(key, l);
+        }            
+    }
+
+    public Dictionary<int, List<WaveFunctionCollapse>> GetWaves()
+    {
+        return waves;
+    }
+
+    public int GetCount()
+    {
+        if (count < 0)
+        {
+            ComputeCount();
+        }
+        return count;
+    }    
+
+    public TimeSpan GetTotalWallClockTime()
+    {
+        if (total_wall_clock_time == null)
+        {
+            ComputeTotalWallClockTime();
+        }
+
+        return total_wall_clock_time;
+    }
+
+    public TimeSpan GetTotalPropTime()
+    {
+        if (total_prop_time == null)
+        {
+            ComputePropTime();
+        }
+
+        return total_prop_time;
+    }
+    
+    public double GetMeanWallClockTime()
+    {
+        if (mean_wall_clock_time < 0)
+        {
+            ComputeMeanWallClockTime();
+        }
+
+        return mean_wall_clock_time;        
+    }
+
+    public double GetMeanPropTime()
+    {
+        if (mean_prop_time < 0)
+        {
+            ComputeMeanPropTime();
+        }
+
+        return mean_prop_time;
+    } 
+
+    public double GetStandardDeviationWallClockTime()
+    {
+        if (stdev_wall_clock_time < 0)
+        {
+            ComputeStdDevWallClockTime();
+        }
+        return stdev_wall_clock_time;
+    }
+
+    public double GetStandardDeviationPropTime()
+    {
+        if (stdev_prop_time < 0)
+        {
+            ComputeStdDevPropTime();
+        }
+        return stdev_prop_time;
+    }
+
+    private List<double> GetWallClockTimes()
+    {
+        if (wall_clock_times == null)
+        {
+            FindWallClockTimes();
+        }
+        return wall_clock_times;
+    }
+
+    private void FindWallClockTimes()
+    {
+        if (wall_clock_times == null)
+        {
+            wall_clock_times = new List<double>();
+        }
+        foreach (var waveList in waves.Values)
+        {
+            foreach (var wave in waveList)
+            {
+                foreach (var search in wave.searches)
+                {
+                    foreach (var screenshot in search.screenshots)
+                    {
+                        wall_clock_times.Add(screenshot.total_runtime_timer.Elapsed.TotalMilliseconds);
+                    }
+                }
+            }
+        }
+    }
+
+    private List<double> GetPropTimes()
+    {
+        if (prop_times == null)
+        {
+            FindPropTimes();
+        }
+        return prop_times;
+    }
+
+    private void FindPropTimes()
+    {
+        if (prop_times == null)
+        {
+            prop_times = new List<double>();
+        }
+        foreach (var waveList in waves.Values)
+        {
+            foreach (var wave in waveList)
+            {
+                foreach (var search in wave.searches)
+                {
+                    foreach (var screenshot in search.screenshots)
+                    {
+                        prop_times.Add(screenshot.propagation_time.TotalMilliseconds);
+                    }
+                }
+            }
+        }
+    }
+
+    private void ComputeCount()
+    {
+        count = 0;
+        foreach (var waveList in waves.Values)
+        {
+            foreach (var wave in waveList)
+            {
+                foreach (var waveSearch in wave.searches)
+                {
+                    foreach (var waveSearchScreenshot in waveSearch.screenshots)
+                    {
+                        count++;
+                    }
+                }
+            }
+        }
+    }
+
+    private void ComputeTotalWallClockTime()
+    {
+        foreach (var waveList in waves.Values)
+        {
+            foreach (var wave in waveList)
+            {
+                foreach (var waveSearch in wave.searches)
+                {
+                    foreach (var waveSearchScreenshot in waveSearch.screenshots)
+                    {
+                        total_wall_clock_time += waveSearchScreenshot.total_runtime_timer.Elapsed;
+                    }
+                }
+            }
+        }
+    }
+
+    private void ComputePropTime()
+    {
+        foreach (var waveList in waves.Values)
+        {
+            foreach (var wave in waveList)
+            {
+                foreach (var waveSearch in wave.searches)
+                {
+                    foreach (var waveSearchScreenshot in waveSearch.screenshots)
+                    {
+                        total_prop_time += waveSearchScreenshot.propagation_time;
+                    }
+                }
+            }
+        }
+    }
+
+    private void ComputeMeanWallClockTime()
+    {
+        mean_wall_clock_time = GetTotalWallClockTime().TotalMilliseconds / GetCount();
+    }
+
+    private void ComputeMeanPropTime()
+    {
+        mean_prop_time = GetTotalPropTime().TotalMilliseconds / GetCount();
+    }
+
+    private void ComputeStdDevWallClockTime()
+    {        
+        stdev_wall_clock_time = ComputeStdDev(GetWallClockTimes());
+    }    
+
+    private void ComputeStdDevPropTime()
+    {
+        stdev_prop_time = ComputeStdDev(GetPropTimes());
+    }
+    
+    //Adapted from Calculate Standard Deviation of Double Variables in C# by Victor Chen
+    private double ComputeStdDev(List<double> collection)
+    {
+        //var collection = watches.ToDictionary(x => x.Key, x => x.Value.TotalMilliseconds).Values.ToList();
+        double ave = collection.Average();
+        double sumOfDerivation = 0;
+        foreach (var time in collection)
+        {
+            sumOfDerivation += (time) * (time);
+        }
+
+        double sumOfDerivationAverage = sumOfDerivation / (collection.Count - 1);
+        return Math.Sqrt(sumOfDerivationAverage - (ave * ave));
     }
 }
 
@@ -297,14 +599,28 @@ internal class WaveFunctionCollapse
 {
     public string name;
     public Stopwatch timer;
-    public List<Search[]> searches;
+    public List<Searches> searches;
 
-    public WaveFunctionCollapse(List<Search[]> searches, string name, Stopwatch timer)
+    public WaveFunctionCollapse(List<Searches> searches, string name, Stopwatch timer)
     {
         this.searches = searches;
         this.name = name;
         this.timer = timer;
     }    
+}
+
+internal class Searches
+{
+    public string name;
+    public Stopwatch timer;
+    public Search[] screenshots;
+
+    public Searches(Search[] screenshots, string name, Stopwatch timer)
+    {
+        this.screenshots = screenshots;
+        this.name = name;
+        this.timer = timer;
+    }
 }
 
 internal abstract class Search
