@@ -294,6 +294,7 @@ class OverlappingModel : Model
 
         if (isParallelPropagate)
         {
+            
             Parallel.For(0, FMX, new ParallelOptions { MaxDegreeOfParallelism = maxParallelism }, x1 =>
             {
                 change |= PropagateOne(x1);

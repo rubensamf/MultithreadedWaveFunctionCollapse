@@ -28,7 +28,7 @@ abstract class Model
     internal bool isParallelPropagate = false;
     internal bool isParallelObserve = false;
 
-    internal Stopwatch prop_watch;
+    internal Stopwatch prop_watch, ob_watch;
 
     protected Model(int width, int height)
 	{
@@ -167,7 +167,9 @@ abstract class Model
 
 		for (int l = 0; l < limit || limit == 0; l++)
 		{
+            ob_watch.Start();
 			bool? result = Observe();
+            ob_watch.Stop();
 			if (result != null)
             {
                 return (bool)result;

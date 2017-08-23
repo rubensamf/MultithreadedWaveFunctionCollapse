@@ -763,6 +763,7 @@ internal abstract class Search
         model.isParallelObserve = _parallel_observe;
         model.maxParallelism = _maxParallelism;
         model.prop_watch = new Stopwatch();
+        model.ob_watch = new Stopwatch();
 
         return model;
     }
@@ -770,9 +771,11 @@ internal abstract class Search
     internal void RunSequential(bool parallel_propagate, bool parallel_observe)
     {
         Stopwatch search_watch, prop_watch;
-        Compute(GetModel(xnode), 0, out search_watch, out prop_watch);
+        Model m = GetModel(xnode);
+        Compute(m, 0, out search_watch, out prop_watch);
         search_time = search_watch.Elapsed;
         propagation_time = prop_watch.Elapsed;
+        Console.WriteLine(m.ob_watch.Elapsed);
     }  
 
     internal void RunParallel(bool parallel_propagate, bool parallel_observe)
@@ -798,9 +801,11 @@ internal abstract class Search
                     // add the time for each 'watch to the accumulatorz
                     search += search_watch.Elapsed;
                     propagate += prop_watch.Elapsed;
+
+                    Console.WriteLine("Finishing Task.Run: "+search_watch.ElapsedMilliseconds +" / "+prop_watch.ElapsedMilliseconds);
                 });
         }
-        Task.WaitAny(tasks);
+        Task.WaitAll(tasks);
         search_time = search;
         propagation_time = propagate;
     }
@@ -908,6 +913,8 @@ internal class ParallelPropagate : Search
         _numSearches = numTries;
         _writeImages = writeImages;
         xnode = xmlNode;
+        _parallel_propagate = true;
+        _parallel_observe = false;
     }
 
     public override void Run()
