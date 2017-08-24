@@ -212,7 +212,7 @@ static class Program
     private static string[] DisplayTime(Dictionary<string, WaveFunctions> executions, int run_num)
     {
         Console.WriteLine();
-        ulong total_runtime = 0, total_searchtime = 0, total_proptime = 0;        
+        ulong total_runtime = 0, total_searchtime = 0, total_proptime = 0, total_observetime = 0;        
         var lines = new List<string>(execution_names.Length);
         int replicateSeed = replicate_seeds[run_num];
 
@@ -231,11 +231,12 @@ static class Program
                     {
                         if(img_name != screenshot.Name)
                             Console.WriteLine("\n" + screenshot.Name);
-                        Console.WriteLine("\tScreenshot " + screenshot_num + " Search time: " + screenshot.search_time + " Propagation time: " + screenshot.propagation_time);
+                        Console.WriteLine("\tScreenshot " + screenshot_num + " Search time: " + screenshot.search_time + " Observation time: " + screenshot.observation_time + " Propagation time: " + screenshot.propagation_time);
                         lines.Add(run_num + ", " + run.name + ", " + screenshot.name + ", " + SCALE_FACTOR + ", " + base_seed + ", " + replicateSeed + ", " + screenshot._maxParallelism + ", " +
-                            screenshot.num_workers + ", " + num_tries + ", " + num_trials + ", " + screenshot_num + ", " + screenshot.propagation_time + ", " + screenshot.search_time);
+                            screenshot.num_workers + ", " + num_tries + ", " + num_trials + ", " + screenshot_num + ", " + screenshot.observation_time + ", " + screenshot.propagation_time + ", " + screenshot.search_time);
                         total_searchtime += (ulong) screenshot.search_time.TotalMilliseconds;
-                        total_proptime += (ulong) screenshot.propagation_time.TotalMilliseconds;
+                        total_proptime += (ulong) screenshot.propagation_time.TotalMilliseconds;                       
+                        total_observetime += (ulong)screenshot.observation_time.TotalMilliseconds;
                         screenshot_num++;
                         img_name = screenshot.Name;
                     }
@@ -244,7 +245,7 @@ static class Program
         }
 
         Console.WriteLine();
-        Console.WriteLine("Run #" + run_num + " Proptime: " + total_proptime + " ms Searchtime: " + total_searchtime + " ms");
+        Console.WriteLine("Run #" + run_num + " Observationtime: "+ "ms Proptime: " + total_proptime + " ms Searchtime: " + total_searchtime + " ms");
 
         return lines.ToArray();
     }
@@ -252,7 +253,7 @@ static class Program
     private static void WriteRuntimes(List<string[]> runs)
     {
         Console.WriteLine("\nOverall Runtime: " + overall_runtime.Elapsed);
-        StringBuilder sb = new StringBuilder("Run Number, Run Name, Image Name, Scale Factor, Base Seed, Replicate Seed, Max Degree of Parallelism, Number of Workers, Number of Tries, Number of Trials, Screenshot Number, Propagate Time, Search Time\n");
+        StringBuilder sb = new StringBuilder("Run Number, Run Name, Image Name, Scale Factor, Base Seed, Replicate Seed, Max Degree of Parallelism, Number of Workers, Number of Tries, Number of Trials, Screenshot Number, Observation Time, Propagate Time, Search Time\n");
 
         foreach (var runtimes in runs)
         {
@@ -268,8 +269,8 @@ static class Program
 
     private static void WriteMainResultTable()
     {
-        StringBuilder sb = new StringBuilder(" , ,Wall-clock time to result, , Time in search, , Time in propagation phase\n" +
-                                             "Strategy, Degree of Parallelism, Mean (ms), Stdev (ms), Mean (ms), Stdev (ms), Mean (ms), Stdev (ms)\n");
+        StringBuilder sb = new StringBuilder(" , ,Wall-clock time to result, , Time in search, , Time in propagation phase, , Time in observation phase\n" +
+                                             "Strategy, Degree of Parallelism, Mean (ms), Stdev (ms), Mean (ms), Stdev (ms), Mean (ms), Stdev (ms), Mean (ms), Stdev (ms)\n");
         foreach (var result in _results.Get())
         {
             var r = result.Value;
@@ -279,7 +280,7 @@ static class Program
             int max_parallel = Convert.ToInt32(split[1]);
             int n_workers = Convert.ToInt32(split[2]);
             var degree_parallelism = max_parallel > n_workers ? max_parallel : n_workers;
-            sb.Append(name + ", " + degree_parallelism + ", " + r.GetMeanWallClockTime() + ", " + r.GetStandardDeviationWallClockTime() + ", " + r.GetMeanSearchTime() + ", " + r.GetStandardDeviationSearchTime() + ", " + r.GetMeanPropTime() + ", " + r.GetStandardDeviationPropTime() + "\n");           
+            sb.Append(name + ", " + degree_parallelism + ", " + r.GetMeanWallClockTime() + ", " + r.GetStandardDeviationWallClockTime() + ", " + r.GetMeanSearchTime() + ", " + r.GetStandardDeviationSearchTime() + ", " + r.GetMeanPropTime() + ", " + r.GetStandardDeviationPropTime() + ", " + r.GetMeanObsTime() + ", " + r.GetStandardDeviationObsTime() + "\n");           
         }
 
         string path = Directory.GetCurrentDirectory() + "\\" + "MultithreadedWaveFunctionCollapseSummary.csv";
@@ -324,13 +325,11 @@ internal class Results
 internal class Result
 {
     private Dictionary<int, List<WaveFunctionCollapse>> waves;
-    private List<double> wall_clock_times, prop_times, search_times;
+    private List<double> wall_clock_times, prop_times, search_times, obs_times;
 
-    private double mean_wall_clock_time, stdev_wall_clock_time, mean_prop_time, stdev_prop_time, mean_search_time, stdev_search_time;
-    private TimeSpan total_wall_clock_time, total_prop_time, total_search_time;
+    private double mean_wall_clock_time, stdev_wall_clock_time, mean_prop_time, stdev_prop_time, mean_search_time, stdev_search_time, mean_obs_time, stdev_obs_time;
+    private TimeSpan total_wall_clock_time, total_prop_time, total_search_time, total_obs_time;
     private int count;
-
-   
 
     public Result()
     {
@@ -338,15 +337,19 @@ internal class Result
         wall_clock_times = null;
         prop_times = null;
         search_times = null;
+        obs_times = null;
         mean_wall_clock_time = -1;
         stdev_wall_clock_time = -1;
         mean_prop_time = -1;
         stdev_prop_time = -1;
         mean_search_time = -1;
         stdev_search_time = -1;
+        mean_obs_time = -1;
+        stdev_obs_time = -1;
         total_wall_clock_time = TimeSpan.Zero;
         total_prop_time = TimeSpan.Zero;
         total_search_time = TimeSpan.Zero;
+        total_obs_time = TimeSpan.Zero;
         count = -1;
     }
 
@@ -408,9 +411,15 @@ internal class Result
         return total_search_time;
     }
 
-   
+    public TimeSpan GetTotalObservationTime()
+    {
+        if(total_obs_time == TimeSpan.Zero)
+        {
+            ComputeObservationTime();
+        }
 
-    
+        return total_obs_time;
+    }        
 
     public double GetMeanWallClockTime()
     {
@@ -441,9 +450,14 @@ internal class Result
         return mean_search_time;
     }
 
-    
-
-   
+    public double GetMeanObsTime()
+    {
+        if (mean_obs_time < 0)
+        {
+            ComputeMeanObsTime();
+        }
+        return mean_obs_time;
+    }
 
     public double GetStandardDeviationWallClockTime()
     {
@@ -472,9 +486,14 @@ internal class Result
         return stdev_search_time;
     }
 
-    
-
-    
+    public double GetStandardDeviationObsTime()
+    {
+        if (stdev_obs_time < 0)
+        {
+            ComputeStdDevObsTime();
+        }
+        return stdev_obs_time;
+    }
 
     private List<double> GetWallClockTimes()
     {
@@ -504,7 +523,7 @@ internal class Result
                 }
             }
         }
-    }
+    } 
 
     private List<double> GetPropTimes()
     {
@@ -560,6 +579,36 @@ internal class Result
                     foreach (var screenshot in search.screenshots)
                     {
                         search_times.Add(screenshot.search_time.TotalMilliseconds);
+                    }
+                }
+            }
+        }
+    }
+
+    private List<double> GetObsTimes()
+    {
+        if (obs_times == null)
+        {
+            FindObsTimes();
+        }
+        return obs_times;
+    }
+
+    private void FindObsTimes()
+    {
+        if (obs_times == null)
+        {
+            obs_times = new List<double>();
+        }
+        foreach (var waveList in waves.Values)
+        {
+            foreach (var wave in waveList)
+            {
+                foreach (var search in wave.searches)
+                {
+                    foreach (var screenshot in search.screenshots)
+                    {
+                        obs_times.Add(screenshot.observation_time.TotalMilliseconds);
                     }
                 }
             }
@@ -635,6 +684,23 @@ internal class Result
         }
     }
 
+    private void ComputeObservationTime()
+    {
+        foreach (var waveList in waves.Values)
+        {
+            foreach (var wave in waveList)
+            {
+                foreach (var waveSearch in wave.searches)
+                {
+                    foreach (var waveSearchScreenshot in waveSearch.screenshots)
+                    {
+                        total_obs_time += waveSearchScreenshot.observation_time;
+                    }
+                }
+            }
+        }
+    }
+
     private void ComputeMeanWallClockTime()
     {
         mean_wall_clock_time = GetTotalWallClockTime().TotalMilliseconds / GetCount();
@@ -650,19 +716,29 @@ internal class Result
         mean_prop_time = GetTotalPropTime().TotalMilliseconds / GetCount();
     }
 
+    private void ComputeMeanObsTime()
+    {
+        mean_obs_time = GetTotalObservationTime().TotalMilliseconds / GetCount();
+    }
+
     private void ComputeStdDevWallClockTime()
     {        
         stdev_wall_clock_time = ComputeStdDev(GetWallClockTimes());
-    }    
+    }
+
+    private void ComputeStdDevSearchTime()
+    {
+        stdev_search_time = ComputeStdDev(GetSearchTimes());
+    }
 
     private void ComputeStdDevPropTime()
     {
         stdev_prop_time = ComputeStdDev(GetPropTimes());
     }
 
-    private void ComputeStdDevSearchTime()
+    private void ComputeStdDevObsTime()
     {
-        stdev_search_time = ComputeStdDev(GetSearchTimes());
+        stdev_obs_time = ComputeStdDev(GetObsTimes());
     }
 
     //Adapted from Calculate Standard Deviation of Double Variables in C# by Victor Chen
@@ -732,8 +808,8 @@ internal abstract class Search
     public int SCALE_FACTOR, _maxParallelism, counter, SEED, screenshotNumber, num_workers, _numSearches;
     public bool _parallel_propagate, _parallel_observe, _writeImages;
     public XmlNode xnode;
-    public TimeSpan search_time, propagation_time;
-    public Stopwatch total_runtime_timer;
+    public TimeSpan search_time, propagation_time, observation_time;
+    public Stopwatch total_runtime_timer;    
 
     public string Name
     {
@@ -763,16 +839,18 @@ internal abstract class Search
         model.isParallelObserve = _parallel_observe;
         model.maxParallelism = _maxParallelism;
         model.prop_watch = new Stopwatch();
+        model.ob_watch = new Stopwatch();
 
         return model;
     }
     
     internal void RunSequential(bool parallel_propagate, bool parallel_observe)
     {
-        Stopwatch search_watch, prop_watch;
-        Compute(GetModel(xnode), 0, out search_watch, out prop_watch);
+        Stopwatch search_watch, prop_watch, ob_watch;
+        Compute(GetModel(xnode), 0, out search_watch, out prop_watch, out ob_watch);
         search_time = search_watch.Elapsed;
         propagation_time = prop_watch.Elapsed;
+        observation_time = ob_watch.Elapsed;
     }  
 
     internal void RunParallel(bool parallel_propagate, bool parallel_observe)
@@ -780,8 +858,8 @@ internal abstract class Search
         Task[] tasks = new Task[num_workers];
         CancellationTokenSource source = new CancellationTokenSource();
         CancellationToken token = source.Token;
-        // create varz to accumulate propagate and search timez       
-        TimeSpan search = TimeSpan.Zero, propagate = TimeSpan.Zero;
+        // create vars to accumulate propagate and search timez       
+        TimeSpan search = TimeSpan.Zero, propagate = TimeSpan.Zero, observation = TimeSpan.Zero;
         for (int i = 0; i < num_workers; i++)
         {
             int id = i;
@@ -789,26 +867,28 @@ internal abstract class Search
                 () =>
                 {
                     Model model = GetModel(xnode);
-                    // Create Ztopwatchez for zearch and for propagate here                   
-                    Stopwatch search_watch, prop_watch;
-                    // pazz thoze to compute
-                    Compute(model, id, out search_watch, out prop_watch); // create a new watch for each task
+                    // Create Stopwatchez for search and for propagate here                   
+                    Stopwatch search_watch, prop_watch, ob_watch;
+                    // pazz those to compute
+                    Compute(model, id, out search_watch, out prop_watch, out ob_watch); // create a new watch for each task
                     source.Cancel();
 
-                    // add the time for each 'watch to the accumulatorz
+                    // add the time for each 'watch to the accumulators
                     search += search_watch.Elapsed;
                     propagate += prop_watch.Elapsed;
+                    observation += ob_watch.Elapsed;
                 });
         }
         Task.WaitAny(tasks);
         search_time = search;
         propagation_time = propagate;
+        observation_time = observation;
     }
 
     /**
      * Accumulates all search and propagation times
      */
-    private void Compute(Model model, int id, out Stopwatch search_time, out Stopwatch propagate_time)
+    private void Compute(Model model, int id, out Stopwatch search_time, out Stopwatch propagate_time, out Stopwatch observation_time)
     {
         Stopwatch search_watch = new Stopwatch();
         string ID_String = (id < 0) ? ("") : (" WITH " + id);
@@ -833,11 +913,11 @@ internal abstract class Search
                 break;
             }
             Console.WriteLine("CONTRADICTION" + ID_String);
-            //model.prop_watch.Reset();
         }
 
         search_time = search_watch;
         propagate_time = model.prop_watch;
+        observation_time = model.ob_watch;
     }    
 }
 
