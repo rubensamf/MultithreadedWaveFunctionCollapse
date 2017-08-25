@@ -847,7 +847,10 @@ internal abstract class Search
     internal void RunSequential(bool parallel_propagate, bool parallel_observe)
     {
         Stopwatch search_watch, prop_watch, ob_watch;
-        Compute(GetModel(xnode), 0, out search_watch, out prop_watch, out ob_watch);
+        Model m = GetModel(xnode);
+        m.isParallelPropagate = parallel_propagate;
+        m.isParallelObserve = parallel_observe;
+        Compute(m, 0, out search_watch, out prop_watch, out ob_watch);
         search_time = search_watch.Elapsed;
         propagation_time = prop_watch.Elapsed;
         observation_time = ob_watch.Elapsed;
@@ -858,7 +861,7 @@ internal abstract class Search
         Task[] tasks = new Task[num_workers];
         CancellationTokenSource source = new CancellationTokenSource();
         CancellationToken token = source.Token;
-        // create vars to accumulate propagate and search timez       
+        // create vars to accumulate propagate and search times       
         TimeSpan search = TimeSpan.Zero, propagate = TimeSpan.Zero, observation = TimeSpan.Zero;
         for (int i = 0; i < num_workers; i++)
         {
@@ -867,19 +870,21 @@ internal abstract class Search
                 () =>
                 {
                     Model model = GetModel(xnode);
-                    // Create Stopwatchez for search and for propagate here                   
+                    model.isParallelPropagate = parallel_propagate;
+                    model.isParallelObserve = parallel_observe;
+                    // Create Stopwatches for search and for propagate here                   
                     Stopwatch search_watch, prop_watch, ob_watch;
-                    // pazz those to compute
+                    // pass those to compute
                     Compute(model, id, out search_watch, out prop_watch, out ob_watch); // create a new watch for each task
                     source.Cancel();
 
-                    // add the time for each 'watch to the accumulators
+                    // add the time for each watch to the accumulators
                     search += search_watch.Elapsed;
                     propagate += prop_watch.Elapsed;
                     observation += ob_watch.Elapsed;
                 });
         }
-        Task.WaitAny(tasks);
+        Task.WaitAll(tasks);
         search_time = search;
         propagation_time = propagate;
         observation_time = observation;
