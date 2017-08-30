@@ -12,10 +12,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
+using ComTypes = System.Runtime.InteropServices.ComTypes;
 
 static class Program
 {
@@ -43,7 +45,6 @@ static class Program
             seed = replicate_seeds[i];
             var trial = Execute();
             runtimes.Add(DisplayTime(trial, i));
-
         }
         overall_runtime.Stop();
         WriteRuntimes(runtimes);
@@ -59,8 +60,8 @@ static class Program
             cur_execution_name = execution_names[i];
             cur_max_degree_parallelism = max_degree_parallelism[i];
             cur_num_workers = num_workers[i];
-            string name = cur_execution_name + " " + cur_max_degree_parallelism + " " + cur_num_workers;
-            var run = Run();
+            string name = cur_execution_name + " " + cur_max_degree_parallelism + " " + cur_num_workers;                       
+            var run = Run();            
             _results.Add(seed, name, run);
             AddToExecutions(executions, name, run);
         }
@@ -83,7 +84,7 @@ static class Program
     }
    
     private static WaveFunctionCollapse Run()
-    {
+    {        
         Stopwatch wfc_timer = Stopwatch.StartNew();
         var searches = new List<Searches>();
         //Run WFC
@@ -133,9 +134,11 @@ static class Program
                 searcher = SequentialSearch.Construct(write_images, num_tries, cur_num_workers, SCALE_FACTOR, seed, cur_max_degree_parallelism, xnode, counter, screenshotNumber, imageName);
                 break;
         }
-        searcher.total_runtime_timer = Stopwatch.StartNew();
+        searcher._cu = new ProcessorUsage();
+        searcher.total_runtime_timer = Stopwatch.StartNew();        
         searcher.Run();
         searcher.total_runtime_timer.Stop();
+        searcher.cpuUsage = searcher._cu.GetCurrentValue();
         return searcher;
     }
 
@@ -231,9 +234,15 @@ static class Program
                     {
                         if(img_name != screenshot.Name)
                             Console.WriteLine("\n" + screenshot.Name);
-                        Console.WriteLine("\tScreenshot " + screenshot_num + " Search time: " + screenshot.search_time + " Observation time: " + screenshot.observation_time + " Propagation time: " + screenshot.propagation_time);
+                        // Trying to make work with Excel better
+                        int xyz = 0;
+                        var search_time = string.Format("{0}:{1}", Math.Floor(screenshot.search_time.TotalMinutes), screenshot.search_time.ToString("ss\\.ff"));
+                        var obs_time = string.Format("{0}:{1}", Math.Floor(screenshot.observation_time.TotalMinutes), screenshot.observation_time.ToString("ss\\.ff"));
+                        var prop_time = string.Format("{0}:{1}", Math.Floor(screenshot.propagation_time.TotalMinutes), screenshot.propagation_time.ToString("ss\\.ff"));
+                        Console.WriteLine("\tScreenshot " + screenshot_num + " Search time: " + search_time + " Observation time: " + obs_time + " Propagation time: " + prop_time);
+                        string cpuUsage = screenshot.cpuUsage + "";
                         lines.Add(run_num + ", " + run.name + ", " + screenshot.name + ", " + SCALE_FACTOR + ", " + base_seed + ", " + replicateSeed + ", " + screenshot._maxParallelism + ", " +
-                            screenshot.num_workers + ", " + num_tries + ", " + num_trials + ", " + screenshot_num + ", " + screenshot.observation_time + ", " + screenshot.propagation_time + ", " + screenshot.search_time);
+                            screenshot.num_workers + ", " + num_tries + ", " + num_trials + ", " + screenshot_num + ", " + obs_time + ", " + prop_time + ", " + search_time + "," + cpuUsage);
                         total_searchtime += (ulong) screenshot.search_time.TotalMilliseconds;
                         total_proptime += (ulong) screenshot.propagation_time.TotalMilliseconds;                       
                         total_observetime += (ulong)screenshot.observation_time.TotalMilliseconds;
@@ -253,7 +262,7 @@ static class Program
     private static void WriteRuntimes(List<string[]> runs)
     {
         Console.WriteLine("\nOverall Runtime: " + overall_runtime.Elapsed);
-        StringBuilder sb = new StringBuilder("Run Number, Run Name, Image Name, Scale Factor, Base Seed, Replicate Seed, Max Degree of Parallelism, Number of Workers, Number of Tries, Number of Trials, Screenshot Number, Observation Time, Propagate Time, Search Time\n");
+        StringBuilder sb = new StringBuilder("Run Number, Run Name, Image Name, Scale Factor, Base Seed, Replicate Seed, Max Degree of Parallelism, Number of Workers, Number of Tries, Number of Trials, Screenshot Number, Observation Time, Propagate Time, Search Time, CPU Usage\n");
 
         foreach (var runtimes in runs)
         {
@@ -269,8 +278,8 @@ static class Program
 
     private static void WriteResultSummaryTable()
     {
-        StringBuilder sb = new StringBuilder(" , ,Wall-clock time to result, , Time in search, , , Time in propagation phase, , , Time in observation phase\n" +
-                                             "Strategy, Degree of Parallelism, Number of Trials Mean (ms), Stdev (ms), Mean (ms), Time per Thread (ms), Stdev (ms),  Mean (ms), Time per Thread (ms), Stdev (ms), Mean (ms), Time per Thread (ms), Stdev (ms)\n");
+        StringBuilder sb = new StringBuilder(" , , , , Wall-clock time to result, , Time in search, , , Time in propagation phase, , , Time in observation phase\n" +
+                                             "Strategy, Degree of Parallelism, Number of Trials, Mean CPU Usage(%), Mean (ms), Stdev (ms), Mean (ms), Time per Thread (ms), Stdev (ms),  Mean (ms), Time per Thread (ms), Stdev (ms), Mean (ms), Time per Thread (ms), Stdev (ms)\n");
         foreach (var result in _results.Get())
         {
             var r = result.Value;
@@ -286,7 +295,8 @@ static class Program
             var search_time_thread_result = name == "parallel-main" ? (search_time_per_thread +"") : "";
             var prop_time_thread_result = name == "parallel-main" ? (prop_time_per_thread + "") : "";
             var obs_time_thread_result = name == "parallel-main" ? (obs_time_per_thread + "") : "";
-            sb.Append(name + ", " + degree_parallelism + ", " + ", " + num_trials + ", " + r.GetMeanWallClockTime() + ", " + r.GetStandardDeviationWallClockTime() + ", " + r.GetMeanSearchTime() + ", " + search_time_thread_result +  ", " + r.GetStandardDeviationSearchTime() + ", " + r.GetMeanPropTime() + ", " + prop_time_thread_result + ", " + + r.GetStandardDeviationPropTime() + ", " + r.GetMeanObsTime() + ", " + obs_time_thread_result + ", " + + r.GetStandardDeviationObsTime() + "\n");           
+            var cpu_usage = r.GetMeanCPUUsage() + "";
+            sb.Append(name + ", " + degree_parallelism + ", " + num_trials + ", " + cpu_usage + ", " + r.GetMeanWallClockTime() + ", " + r.GetStandardDeviationWallClockTime() + ", " + r.GetMeanSearchTime() + ", " + search_time_thread_result +  ", " + r.GetStandardDeviationSearchTime() + ", " + r.GetMeanPropTime() + ", " + prop_time_thread_result + ", " + + r.GetStandardDeviationPropTime() + ", " + r.GetMeanObsTime() + ", " + obs_time_thread_result + ", " + + r.GetStandardDeviationObsTime() + "\n");           
         }
 
         string path = Directory.GetCurrentDirectory() + "\\" + "MultithreadedWaveFunctionCollapseSummary.csv";
@@ -333,9 +343,10 @@ internal class Result
     private Dictionary<int, List<WaveFunctionCollapse>> waves;
     private List<double> wall_clock_times, prop_times, search_times, obs_times;
 
-    private double mean_wall_clock_time, stdev_wall_clock_time, mean_prop_time, stdev_prop_time, mean_search_time, stdev_search_time, mean_obs_time, stdev_obs_time;
+    private double mean_wall_clock_time, stdev_wall_clock_time, mean_prop_time, stdev_prop_time, mean_search_time, stdev_search_time, mean_obs_time, stdev_obs_time, total_cpu_usage, mean_cpu_usage;
     private TimeSpan total_wall_clock_time, total_prop_time, total_search_time, total_obs_time;
     private int count;
+    private bool CPU_FLAG;
 
     public Result()
     {
@@ -356,6 +367,9 @@ internal class Result
         total_prop_time = TimeSpan.Zero;
         total_search_time = TimeSpan.Zero;
         total_obs_time = TimeSpan.Zero;
+        total_cpu_usage = 0;
+        mean_cpu_usage = -1;
+        CPU_FLAG = false;
         count = -1;
     }
 
@@ -386,7 +400,16 @@ internal class Result
             ComputeCount();
         }
         return count;
-    }    
+    }
+
+    private double GetTotalCPUUsage()
+    {
+        if (!CPU_FLAG)
+        {
+            ComputeTotalCPUUsage();
+        }
+        return total_cpu_usage;
+    }
 
     public TimeSpan GetTotalWallClockTime()
     {
@@ -425,7 +448,16 @@ internal class Result
         }
 
         return total_obs_time;
-    }        
+    }
+
+    public double GetMeanCPUUsage()
+    {
+        if (!CPU_FLAG)
+        {
+            ComputeMeanCPUUsage();
+        }
+        return mean_cpu_usage;
+    }
 
     public double GetMeanWallClockTime()
     {
@@ -639,6 +671,33 @@ internal class Result
         }
     }
 
+    private void ComputeTotalCPUUsage()
+    {
+        if (CPU_FLAG)
+            return;
+
+        total_cpu_usage = 0;
+        foreach (var waveList in waves.Values)
+        {
+            foreach (var wave in waveList)
+            {
+                foreach (var search in wave.searches)
+                {
+                    foreach (var screenshot in search.screenshots)
+                    {
+                        total_cpu_usage += screenshot.cpuUsage;
+                    }
+                }
+            }
+        }
+        CPU_FLAG = true;
+    }
+
+    private void ComputeMeanCPUUsage()
+    {
+        mean_cpu_usage = GetTotalCPUUsage() / GetCount();
+    }
+
     private void ComputeTotalWallClockTime()
     {
         foreach (var waveList in waves.Values)
@@ -815,7 +874,9 @@ internal abstract class Search
     public bool _parallel_propagate, _parallel_observe, _writeImages;
     public XmlNode xnode;
     public TimeSpan search_time, propagation_time, observation_time;
-    public Stopwatch total_runtime_timer;    
+    public Stopwatch total_runtime_timer;
+    public ProcessorUsage _cu;
+    public float cpuUsage;
 
     public string Name
     {
@@ -1038,8 +1099,42 @@ internal class ParallelObserve : Search
     }
 }
 
+internal class ProcessorUsage
+{
+    const float sampleFrequencyMillis = 1000;
 
+    protected object syncLock = new object();
+    protected PerformanceCounter counter;
+    protected float lastSample;
+    protected DateTime lastSampleTime;
 
+    /// <summary>
+    /// 
+    /// </summary>
+    public ProcessorUsage()
+    {
+        this.counter = new PerformanceCounter("Processor", "% Processor Time", "_Total", true);
+        //PerformanceCounter theCPUCounter = new PerformanceCounter("Process", "% Processor Time", Process.GetCurrentProcess().ProcessName);
+}
 
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <returns></returns>
+    public float GetCurrentValue()
+    {
+        if ((DateTime.UtcNow - lastSampleTime).TotalMilliseconds > sampleFrequencyMillis)
+        {
+            lock (syncLock)
+            {
+                if ((DateTime.UtcNow - lastSampleTime).TotalMilliseconds > sampleFrequencyMillis)
+                {
+                    lastSample = counter.NextValue();
+                    lastSampleTime = DateTime.UtcNow;
+                }
+            }
+        }
 
-
+        return lastSample;
+    }
+}
