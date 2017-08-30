@@ -1,4 +1,3 @@
- , ,Wall-clock time to result, , Time in search, , , Time in propagation phase, , Time in observation phase
-Strategy, Degree of Parallelism, Mean (ms), Stdev (ms), Mean (ms), Stdev (ms), Time per Thread (ms), Mean (ms), Stdev (ms), Mean (ms), Stdev (ms)
-parallel-propagate, 2, 8694.31596666667, 5746.95578169079, 8581.92363333333, 5670.01190680252, , 3875.71086666667, 2320.15541141146, 4103.88773333333, 3137.74322497242
-parallel-main, 8, 16476.0223, 9346.8458094644, 114646.4434, 68326.7881860542, 14330.805425, 49127.2980666667, 27678.0668275356, 58077.7245, 38601.4993507138
+ , ,Wall-clock time to result, , Time in search, , , Time in propagation phase, , , Time in observation phase
+Strategy, Degree of Parallelism, Mean (ms), Stdev (ms), Mean (ms), Time per Thread (ms), Stdev (ms),  Mean (ms), Time per Thread (ms), Stdev (ms), Mean (ms), Time per Thread (ms), Stdev (ms)
+parallel-main, 8, 17909.9074333333, 10726.8315326545, 124592.536333333, 15574.0670416667, 78669.9345784156, 53196.8498333333, 6649.60622916667, 31554.7932793299, 62961.9616666667, 7870.24520833333, 44014.6217573443

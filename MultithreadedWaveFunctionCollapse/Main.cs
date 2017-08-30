@@ -269,8 +269,8 @@ static class Program
 
     private static void WriteResultSummaryTable()
     {
-        StringBuilder sb = new StringBuilder(" , ,Wall-clock time to result, , Time in search, , , Time in propagation phase, , Time in observation phase\n" +
-                                             "Strategy, Degree of Parallelism, Mean (ms), Stdev (ms), Mean (ms), Stdev (ms), Time per Thread (ms), Mean (ms), Stdev (ms), Mean (ms), Stdev (ms)\n");
+        StringBuilder sb = new StringBuilder(" , ,Wall-clock time to result, , Time in search, , , Time in propagation phase, , , Time in observation phase\n" +
+                                             "Strategy, Degree of Parallelism, Number of Trials Mean (ms), Stdev (ms), Mean (ms), Time per Thread (ms), Stdev (ms),  Mean (ms), Time per Thread (ms), Stdev (ms), Mean (ms), Time per Thread (ms), Stdev (ms)\n");
         foreach (var result in _results.Get())
         {
             var r = result.Value;
@@ -280,9 +280,13 @@ static class Program
             int max_parallel = Convert.ToInt32(split[1]);
             int n_workers = Convert.ToInt32(split[2]);
             var degree_parallelism = max_parallel > n_workers ? max_parallel : n_workers;
-            var time_per_thread = r.GetMeanSearchTime() / degree_parallelism;
-            var time_thread_result = name == "parallel-main" ? (time_per_thread +"") : "";
-            sb.Append(name + ", " + degree_parallelism + ", " + r.GetMeanWallClockTime() + ", " + r.GetStandardDeviationWallClockTime() + ", " + r.GetMeanSearchTime() + ", " + r.GetStandardDeviationSearchTime() + ", " + time_thread_result + ", " + r.GetMeanPropTime() + ", " + r.GetStandardDeviationPropTime() + ", " + r.GetMeanObsTime() + ", " + r.GetStandardDeviationObsTime() + "\n");           
+            var search_time_per_thread = r.GetMeanSearchTime() / degree_parallelism;
+            var prop_time_per_thread = r.GetMeanPropTime() / degree_parallelism;
+            var obs_time_per_thread = r.GetMeanObsTime() / degree_parallelism;          
+            var search_time_thread_result = name == "parallel-main" ? (search_time_per_thread +"") : "";
+            var prop_time_thread_result = name == "parallel-main" ? (prop_time_per_thread + "") : "";
+            var obs_time_thread_result = name == "parallel-main" ? (obs_time_per_thread + "") : "";
+            sb.Append(name + ", " + degree_parallelism + ", " + ", " + num_trials + ", " + r.GetMeanWallClockTime() + ", " + r.GetStandardDeviationWallClockTime() + ", " + r.GetMeanSearchTime() + ", " + search_time_thread_result +  ", " + r.GetStandardDeviationSearchTime() + ", " + r.GetMeanPropTime() + ", " + prop_time_thread_result + ", " + + r.GetStandardDeviationPropTime() + ", " + r.GetMeanObsTime() + ", " + obs_time_thread_result + ", " + + r.GetStandardDeviationObsTime() + "\n");           
         }
 
         string path = Directory.GetCurrentDirectory() + "\\" + "MultithreadedWaveFunctionCollapseSummary.csv";
