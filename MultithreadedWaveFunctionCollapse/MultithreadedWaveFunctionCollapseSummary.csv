@@ -1,3 +1,3 @@
- , ,Wall-clock time to result, , Time in search, , , Time in propagation phase, , , Time in observation phase
-Strategy, Degree of Parallelism, Mean (ms), Stdev (ms), Mean (ms), Time per Thread (ms), Stdev (ms),  Mean (ms), Time per Thread (ms), Stdev (ms), Mean (ms), Time per Thread (ms), Stdev (ms)
-parallel-main, 8, 17909.9074333333, 10726.8315326545, 124592.536333333, 15574.0670416667, 78669.9345784156, 53196.8498333333, 6649.60622916667, 31554.7932793299, 62961.9616666667, 7870.24520833333, 44014.6217573443
+ , , , , Wall-clock time to result, , Time in search, , , Time in propagation phase, , , Time in observation phase
+Strategy, Degree of Parallelism, Number of Trials, Mean CPU Usage(%), Mean (ms), Stdev (ms), Mean (ms), Time per Thread (ms), Stdev (ms),  Mean (ms), Time per Thread (ms), Stdev (ms), Mean (ms), Time per Thread (ms), Stdev (ms)
+sequential-main, 1, 1, 0, 8487.51503333333, 5503.52279375598, 8376.04143333333, , 5429.71087719638, 3848.54326666667, , 2339.91391503036, 3971.8016, , 2956.31453033141
