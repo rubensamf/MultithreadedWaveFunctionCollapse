@@ -48,7 +48,7 @@ static class Program
         }
         overall_runtime.Stop();
         WriteRuntimes(runtimes);
-        WriteResultSummaryTable();
+        WriteMainResultTable();
         WaitForEscKey();
     }
 
@@ -276,10 +276,10 @@ static class Program
         System.IO.File.WriteAllText(path, sb.ToString());
     }
 
-    private static void WriteResultSummaryTable()
+    private static void WriteMainResultTable()
     {
-        StringBuilder sb = new StringBuilder(" , , , , Wall-clock time to result, , Time in search, , , Time in propagation phase, , , Time in observation phase\n" +
-                                             "Strategy, Degree of Parallelism, Number of Trials, Mean CPU Usage(%), Mean (ms), Stdev (ms), Mean (ms), Time per Thread (ms), Stdev (ms),  Mean (ms), Time per Thread (ms), Stdev (ms), Mean (ms), Time per Thread (ms), Stdev (ms)\n");
+        StringBuilder sb = new StringBuilder(" , ,Wall-clock time to result, , Time in search, , , Time in propagation phase, , , Time in observation phase\n" +
+                                             "Strategy, Degree of Parallelism, Number of Trials Mean (ms), Stdev (ms), Mean (ms), Time per Thread (ms), Stdev (ms),  Mean (ms), Time per Thread (ms), Stdev (ms), Mean (ms), Time per Thread (ms), Stdev (ms)\n");
         foreach (var result in _results.Get())
         {
             var r = result.Value;
@@ -295,8 +295,7 @@ static class Program
             var search_time_thread_result = name == "parallel-main" ? (search_time_per_thread +"") : "";
             var prop_time_thread_result = name == "parallel-main" ? (prop_time_per_thread + "") : "";
             var obs_time_thread_result = name == "parallel-main" ? (obs_time_per_thread + "") : "";
-            var cpu_usage = r.GetMeanCPUUsage() + "";
-            sb.Append(name + ", " + degree_parallelism + ", " + num_trials + ", " + cpu_usage + ", " + r.GetMeanWallClockTime() + ", " + r.GetStandardDeviationWallClockTime() + ", " + r.GetMeanSearchTime() + ", " + search_time_thread_result +  ", " + r.GetStandardDeviationSearchTime() + ", " + r.GetMeanPropTime() + ", " + prop_time_thread_result + ", " + + r.GetStandardDeviationPropTime() + ", " + r.GetMeanObsTime() + ", " + obs_time_thread_result + ", " + + r.GetStandardDeviationObsTime() + "\n");           
+            sb.Append(name + ", " + degree_parallelism + ", " + ", " + num_trials + ", " + r.GetMeanWallClockTime() + ", " + r.GetStandardDeviationWallClockTime() + ", " + r.GetMeanSearchTime() + ", " + search_time_thread_result +  ", " + r.GetStandardDeviationSearchTime() + ", " + r.GetMeanPropTime() + ", " + prop_time_thread_result + ", " + + r.GetStandardDeviationPropTime() + ", " + r.GetMeanObsTime() + ", " + obs_time_thread_result + ", " + + r.GetStandardDeviationObsTime() + "\n");           
         }
 
         string path = Directory.GetCurrentDirectory() + "\\" + "MultithreadedWaveFunctionCollapseSummary.csv";
@@ -914,10 +913,7 @@ internal abstract class Search
     internal void RunSequential(bool parallel_propagate, bool parallel_observe)
     {
         Stopwatch search_watch, prop_watch, ob_watch;
-        Model m = GetModel(xnode);
-        m.isParallelPropagate = parallel_propagate;
-        m.isParallelObserve = parallel_observe;
-        Compute(m, 0, out search_watch, out prop_watch, out ob_watch);
+        Compute(GetModel(xnode), 0, out search_watch, out prop_watch, out ob_watch);
         search_time = search_watch.Elapsed;
         propagation_time = prop_watch.Elapsed;
         observation_time = ob_watch.Elapsed;
@@ -928,7 +924,7 @@ internal abstract class Search
         Task[] tasks = new Task[num_workers];
         CancellationTokenSource source = new CancellationTokenSource();
         CancellationToken token = source.Token;
-        // create vars to accumulate propagate and search times       
+        // create vars to accumulate propagate and search timez       
         TimeSpan search = TimeSpan.Zero, propagate = TimeSpan.Zero, observation = TimeSpan.Zero;
         for (int i = 0; i < num_workers; i++)
         {
@@ -937,15 +933,14 @@ internal abstract class Search
                 () =>
                 {
                     Model model = GetModel(xnode);
-                    model.isParallelPropagate = parallel_propagate;
-                    model.isParallelObserve = parallel_observe;
-                    // Create Stopwatches for search and for propagate here                   
+                    model.token = token;
+                    // Create Stopwatchez for search and for propagate here                   
                     Stopwatch search_watch, prop_watch, ob_watch;
-                    // pass those to compute
+                    // pazz those to compute
                     Compute(model, id, out search_watch, out prop_watch, out ob_watch); // create a new watch for each task
                     source.Cancel();
-
-                    // add the time for each watch to the accumulators
+                    
+                    // add the time for each 'watch to the accumulators
                     search += search_watch.Elapsed;
                     propagate += prop_watch.Elapsed;
                     observation += ob_watch.Elapsed;
@@ -968,7 +963,7 @@ internal abstract class Search
         {
             Console.Write(">");            
             search_watch.Start();
-            bool finished = model.Run(SEED+id, xnode.Get("limit", 0));
+            bool finished = model.Run(SEED+id+101*k, xnode.Get("limit", 0));
             search_watch.Stop();
             if (finished)
             {

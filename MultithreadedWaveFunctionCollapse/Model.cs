@@ -30,6 +30,8 @@ abstract class Model
 
     internal Stopwatch prop_watch, ob_watch;
 
+    public System.Threading.CancellationToken? token = null;
+
     protected Model(int width, int height)
 	{
 		FMX = width;
@@ -167,6 +169,13 @@ abstract class Model
 
 		for (int l = 0; l < limit || limit == 0; l++)
 		{
+		    if (token.HasValue && token.Value.IsCancellationRequested)
+		    {
+		        Console.WriteLine("Aborting early due to cancelation");
+		        return true;
+            }
+                
+
             ob_watch.Start();
 			bool? result = Observe();
             ob_watch.Stop();
